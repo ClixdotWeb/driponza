@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b08">
+  <title>DRIPONZA — Pure Spices. Bold Flavour.</title>
+  <link rel="icon" type="image/x-icon" href="../assets/image/logo/LOGO BG.png">
+  <meta name="description" content="Discover premium, naturally sourced spices from Driponza. Shop whole spices, aromatic blends and everyday essentials.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root{--bg:#080b08;--panel:#101610;--panel2:#151e15;--green:#91f52f;--green2:#b2ff62;--white:#f6f8f3;--muted:#a4ada0;--line:rgba(174,255,111,.18);--gold:#d8b86b}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;scroll-padding-top:90px}
+    body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--white);overflow-x:hidden}
+    a{text-decoration:none;color:inherit}
+    button,input,textarea{font:inherit}
+    button{cursor:pointer}
+    .container{width:min(1160px,92%);margin:auto}
+    .announcement{background:var(--green);color:#091006;text-align:center;padding:9px 12px;font-size:12px;font-weight:800;letter-spacing:1.2px}
+    header{position:sticky;top:0;z-index:50;background:rgba(8,11,8,.88);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+    .nav{height:76px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .brand{font:700 27px 'Space Grotesk';letter-spacing:-1.5px;color:var(--green);display:flex;align-items:center;gap:9px}
+    .brand-mark{width:35px;height:35px;border:2px solid var(--green);border-radius:12px;display:grid;place-items:center;transform:rotate(-8deg);font-size:18px}
+    .nav-links{display:flex;gap:30px;align-items:center;color:#d5ddd1;font-size:13px}
+    .nav-links a{transition:.25s}.nav-links a:hover{color:var(--green)}
+    .nav-actions{display:flex;align-items:center;gap:12px}
+    .icon-btn{width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:transparent;color:white;position:relative}
+    .cart-count{position:absolute;right:-4px;top:-5px;background:var(--green);color:#091006;width:19px;height:19px;border-radius:50%;font-size:11px;font-weight:800;display:grid;place-items:center}
+    .menu-toggle{display:none}
+    .btn{border:0;border-radius:999px;padding:13px 21px;font-size:12px;font-weight:800;letter-spacing:.5px;display:inline-flex;align-items:center;justify-content:center;gap:9px;transition:transform .25s,box-shadow .25s}
+    .btn:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(145,245,47,.18)}
+    .btn-primary{background:var(--green);color:#091006}
+    .btn-outline{border:1px solid var(--line);color:var(--white);background:transparent}
+    .hero{min-height:650px;display:grid;align-items:center;position:relative;isolation:isolate;padding:80px 0 90px;overflow:hidden}
+    .hero:before{content:"";position:absolute;width:600px;height:600px;border-radius:50%;right:-110px;top:10px;background:radial-gradient(circle,rgba(145,245,47,.15),transparent 68%);z-index:-1;animation:pulse 6s infinite alternate}
+    .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:55px;align-items:center}
+    .eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--green);font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:22px}
+    .eyebrow:before{content:"";width:28px;height:1px;background:var(--green)}
+    h1,h2,h3{font-family:'Space Grotesk',sans-serif}
+    h1{font-size:clamp(48px,6.3vw,82px);line-height:.98;letter-spacing:-4px;max-width:650px}
+    h1 span{color:var(--green)}
+    .hero-copy{color:#b4beb0;line-height:1.8;max-width:510px;margin:25px 0 30px;font-size:15px}
+    .hero-buttons{display:flex;gap:12px;flex-wrap:wrap}
+    .hero-meta{display:flex;gap:27px;margin-top:43px;flex-wrap:wrap}
+    .meta-item strong{display:block;font:700 22px 'Space Grotesk';color:var(--green)}
+    .meta-item small{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+    .hero-art{height:470px;position:relative;display:grid;place-items:center}
+    .orbit{position:absolute;width:410px;height:410px;border:1px solid rgba(145,245,47,.2);border-radius:50%;animation:spin 32s linear infinite}
+    .orbit:before,.orbit:after{content:"";position:absolute;width:12px;height:12px;background:var(--green);border-radius:50%;box-shadow:0 0 22px var(--green)}
+    .orbit:before{top:52px;left:42px}.orbit:after{bottom:50px;right:35px}
+    .hero-product{width:min(330px,75%);aspect-ratio: .72;position:relative;z-index:2;border:1px solid rgba(255,255,255,.15);border-radius:18px;background:linear-gradient(145deg,#1b2519,#080b08 70%);box-shadow:0 30px 90px #000;transform:rotate(5deg);padding:25px;display:flex;flex-direction:column;justify-content:space-between;animation:float 5s ease-in-out infinite}
+    .pack-logo{font:700 35px 'Space Grotesk';color:var(--green);letter-spacing:-2px}
+    .pack-sub{font-size:9px;letter-spacing:2px;color:#d7e6ce}
+    .pack-spice{height:160px;display:grid;place-items:center;font-size:105px;filter:drop-shadow(0 18px 12px #000)}
+    .pack-label{border-top:1px solid var(--green);padding-top:12px}
+    .pack-label strong{font:700 21px 'Space Grotesk';display:block}
+    .pack-label small{color:var(--muted);font-size:10px;letter-spacing:1px}
+    .floating-tag{position:absolute;z-index:3;background:#121a11;border:1px solid var(--line);border-radius:14px;padding:13px 16px;box-shadow:0 15px 35px #000;font-size:11px;color:#cbd6c5}
+    .floating-tag b{color:var(--green);display:block;font-size:13px;margin-bottom:3px}
+    .tag-one{top:55px;right:0;animation:float 4s ease-in-out infinite}.tag-two{bottom:65px;left:0;animation:float 5s ease-in-out infinite reverse}
+    .section{padding:95px 0}
+    .section-head{display:flex;justify-content:space-between;align-items:end;gap:25px;margin-bottom:35px}
+    .section-head h2{font-size:clamp(32px,4vw,48px);letter-spacing:-2px}
+    .section-head p{color:var(--muted);font-size:13px;line-height:1.7;max-width:390px}
+    .category-row{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:25px}
+    .filter-btn{border:1px solid var(--line);background:transparent;color:#c5cec0;border-radius:30px;padding:9px 16px;font-size:11px;font-weight:700;transition:.2s}
+    .filter-btn.active,.filter-btn:hover{background:var(--green);color:#081006;border-color:var(--green)}
+    .search-wrap{margin-left:auto;display:flex;align-items:center;border:1px solid var(--line);border-radius:30px;padding:0 14px;gap:8px;min-width:210px}
+    .search-wrap input{background:transparent;border:0;outline:0;color:white;padding:10px 0;width:100%;font-size:12px}
+    .products-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+    .product-card{background:linear-gradient(145deg,#141b13,#0c100c);border:1px solid var(--line);border-radius:17px;overflow:hidden;transition:.35s;position:relative}
+    .product-card:hover{transform:translateY(-8px);border-color:rgba(145,245,47,.65);box-shadow:0 20px 45px rgba(0,0,0,.35)}
+    .product-image{height:220px;display:grid;place-items:center;position:relative;overflow:hidden;background:radial-gradient(circle at 50% 55%,rgba(145,245,47,.12),transparent 60%),#111710}
+    .product-image:after{content:"";position:absolute;inset:12px;border:1px solid rgba(145,245,47,.09);border-radius:12px}
+    .product-emoji{font-size:88px;filter:drop-shadow(0 18px 12px rgba(0,0,0,.5));transition:.4s}
+    .product-card:hover .product-emoji{transform:scale(1.12) rotate(-7deg)}
+    .product-tag{position:absolute;top:13px;left:13px;background:var(--green);color:#081006;border-radius:20px;padding:5px 9px;font-size:9px;font-weight:900;letter-spacing:.6px;z-index:2}
+    .product-info{padding:17px}
+    .product-category{color:var(--green);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px}
+    .product-info h3{font-size:17px;margin:7px 0 5px}
+    .product-info p{font-size:11px;color:var(--muted);line-height:1.6;min-height:35px}
+    .product-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:15px}
+    .price{font:700 19px 'Space Grotesk';color:var(--green)}
+    .price small{font:400 10px 'DM Sans';color:var(--muted)}
+    .add-btn{width:37px;height:37px;border-radius:50%;border:0;background:var(--green);color:#081006;font-size:18px;transition:.2s}
+    .add-btn:hover{transform:rotate(90deg) scale(1.08)}
+    .empty-state{grid-column:1/-1;text-align:center;color:var(--muted);padding:50px}
+    .feature-band{background:var(--green);color:#081006;padding:34px 0}
+    .features{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+    .feature{display:flex;align-items:center;gap:13px}
+    .feature i{font-size:25px}.feature strong{display:block;font:700 13px 'Space Grotesk'}.feature small{font-size:10px;opacity:.7}
+    .story-grid{display:grid;grid-template-columns:1fr 1fr;gap:65px;align-items:center}
+    .story-visual{min-height:390px;border-radius:22px;border:1px solid var(--line);background:radial-gradient(circle at 50% 50%,rgba(145,245,47,.16),transparent 55%),linear-gradient(145deg,#182218,#080b08);display:grid;place-items:center;position:relative;overflow:hidden}
+    .story-visual .big-leaf{font-size:170px;filter:drop-shadow(0 20px 25px #000);animation:float 5s infinite}
+    .story-visual:before{content:"PURE • NATURAL • AUTHENTIC";position:absolute;bottom:25px;color:var(--green);letter-spacing:4px;font-size:9px}
+    .story-copy h2{font-size:clamp(34px,4vw,50px);line-height:1.08;letter-spacing:-2px;margin-bottom:20px}
+    .story-copy h2 span{color:var(--green)}
+    .story-copy p{color:var(--muted);font-size:14px;line-height:1.9;margin-bottom:22px}
+    .ticks{display:grid;gap:13px;margin:25px 0}.ticks div{display:flex;gap:10px;align-items:center;font-size:13px}.ticks i{color:var(--green)}
+    .cta{padding:65px 0;background:linear-gradient(110deg,#162315,#0b100b);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .cta-inner{display:flex;justify-content:space-between;align-items:center;gap:25px}
+    .cta h2{font-size:clamp(30px,4vw,44px);letter-spacing:-1.8px}.cta p{color:var(--muted);font-size:13px;margin-top:9px}
+    footer{padding:55px 0 25px}
+    .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:35px;padding-bottom:40px}
+    .footer-about p{color:var(--muted);font-size:12px;line-height:1.8;max-width:280px;margin-top:15px}
+    .footer-col h4{font:700 12px 'Space Grotesk';margin-bottom:17px;color:var(--green)}
+    .footer-col a{display:block;color:var(--muted);font-size:12px;margin:11px 0;transition:.2s}.footer-col a:hover{color:white}
+    .copyright{border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;gap:15px;color:#7d8878;font-size:10px}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(5px);z-index:100;opacity:0;visibility:hidden;transition:.25s}
+    .overlay.show{opacity:1;visibility:visible}
+    .cart-drawer{position:fixed;right:0;top:0;height:100%;width:min(440px,100%);background:#0e140e;border-left:1px solid var(--line);z-index:101;transform:translateX(105%);transition:.35s;display:flex;flex-direction:column}
+    .cart-drawer.show{transform:translateX(0)}
+    .drawer-head{padding:22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+    .drawer-head h3{font-size:22px}.close-btn{background:none;border:0;color:white;font-size:25px}
+    .cart-items{padding:15px 22px;overflow:auto;flex:1}
+    .cart-empty{text-align:center;color:var(--muted);padding:70px 10px}.cart-empty i{font-size:45px;color:var(--green);display:block;margin-bottom:15px}
+    .cart-item{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+    .cart-thumb{height:54px;border-radius:10px;background:#1b2718;display:grid;place-items:center;font-size:27px}
+    .cart-item h4{font-size:13px}.cart-item small{color:var(--green);font-size:11px}
+    .qty{display:flex;align-items:center;gap:8px;margin-top:7px}.qty button{width:23px;height:23px;border-radius:50%;border:1px solid var(--line);background:transparent;color:white}
+    .remove{background:none;border:0;color:#899184;font-size:15px}
+    .drawer-foot{padding:20px 22px;border-top:1px solid var(--line)}
+    .total-line{display:flex;justify-content:space-between;font-size:14px;margin-bottom:17px}.total-line strong{font:700 23px 'Space Grotesk';color:var(--green)}
+    .drawer-foot .btn{width:100%}
+    .checkout-modal{position:fixed;z-index:110;inset:0;display:grid;place-items:center;padding:15px;opacity:0;visibility:hidden;transition:.25s}
+    .checkout-modal.show{opacity:1;visibility:visible}
+    .checkout-box{width:min(500px,100%);background:#111811;border:1px solid var(--line);border-radius:20px;padding:26px;max-height:92vh;overflow:auto;transform:translateY(20px);transition:.25s}
+    .checkout-modal.show .checkout-box{transform:translateY(0)}
+    .checkout-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+    .checkout-head h3{font-size:23px}
+    .field{margin:13px 0}.field label{display:block;color:#cbd4c6;font-size:11px;margin-bottom:7px}
+    .field input,.field textarea{width:100%;border:1px solid var(--line);background:#080d08;border-radius:10px;padding:12px;color:white;outline:none;font-size:13px}
+    .field input:focus,.field textarea:focus{border-color:var(--green)}
+    .field textarea{min-height:75px;resize:vertical}
+    .checkout-summary{background:#0a100a;border:1px solid var(--line);border-radius:12px;padding:14px;margin:17px 0;color:var(--muted);font-size:12px;line-height:1.8}
+    .checkout-summary strong{color:var(--green)}
+    .toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);background:var(--green);color:#071006;padding:12px 18px;border-radius:30px;font-size:12px;font-weight:800;z-index:150;opacity:0;transition:.25s;pointer-events:none}
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    .reveal{opacity:0;transform:translateY(25px);transition:opacity .7s ease,transform .7s ease}
+    .reveal.visible{opacity:1;transform:translateY(0)}
+    @keyframes float{0%,100%{transform:translateY(0) rotate(5deg)}50%{transform:translateY(-15px) rotate(3deg)}}
+    @keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{to{transform:scale(1.12);opacity:.6}}
+    @media(max-width:900px){.hero-grid{gap:20px}.products-grid{grid-template-columns:repeat(2,1fr)}.footer-grid{grid-template-columns:1.4fr 1fr 1fr}.footer-col:last-child{grid-column:2}.nav-links{gap:17px}.hero-art{height:410px}.orbit{width:340px;height:340px}}
+    @media(max-width:650px){.announcement{font-size:9px}.nav{height:66px}.brand{font-size:23px}.nav-links{display:none;position:absolute;top:66px;left:0;right:0;background:#0b100b;padding:22px 5%;border-bottom:1px solid var(--line);flex-direction:column;align-items:flex-start}.nav-links.open{display:flex}.menu-toggle{display:inline-grid;place-items:center}.nav-actions .btn{display:none}.hero{padding:55px 0 60px;min-height:auto}.hero-grid{grid-template-columns:1fr}.hero-art{height:390px;grid-row:1}.hero-copy{font-size:13px}.hero-meta{margin-top:30px}.hero h1{letter-spacing:-2.5px}.section{padding:68px 0}.section-head{display:block}.section-head p{margin-top:12px}.category-row{align-items:stretch}.search-wrap{order:2;min-width:100%;margin:8px 0 0}.products-grid{gap:11px}.product-image{height:155px}.product-emoji{font-size:65px}.product-info{padding:12px}.product-info h3{font-size:15px}.product-info p{font-size:10px}.price{font-size:17px}.features{grid-template-columns:repeat(2,1fr);gap:23px}.feature-band{padding:27px 0}.story-grid{grid-template-columns:1fr;gap:30px}.story-visual{min-height:280px}.story-visual .big-leaf{font-size:130px}.cta-inner{display:block}.cta-inner .btn{margin-top:22px}.footer-grid{grid-template-columns:1fr 1fr;gap:28px}.footer-about{grid-column:1/-1}.footer-col:last-child{grid-column:auto}.copyright{display:block;line-height:2}.tag-one{right:-5px}.tag-two{left:-5px}}
+    @media(max-width:380px){.products-grid{grid-template-columns:1fr}.product-image{height:210px}.features{grid-template-columns:1fr}.hero-art{height:340px}.orbit{width:290px;height:290px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+
+
+
+    .brand {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.brand-logo {
+    height: 45px;
+    width: auto;
+    max-width: 200px;
+    object-fit: contain;
+    display: block;
+}
+
+
+
+.pack-spice img {
+    width: 110px;
+    height: 110px;
+    object-fit: contain;
+    display: block;
+}
+
+    .gallery-main{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;z-index:1}
+    .gallery-dots{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:4}
+    .gallery-dot{width:8px;height:8px;border:0;border-radius:50%;background:#fff9;cursor:pointer;padding:0}.gallery-dot.on{background:var(--green)}
+    .gallery-next{position:absolute;right:9px;top:50%;transform:translateY(-50%);z-index:4;border:0;border-radius:50%;background:#101810d9;color:white;width:29px;height:29px;cursor:pointer}
+
+
+
+
+
+    .story-visual {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  background: #101a10;
+}
+
+.story-image {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.6s ease;
+}
+
+.story-visual:hover .story-image {
+  transform: scale(1.05);
+}
+
+@media (max-width: 768px) {
+  .story-image {
+    min-height: 300px;
+  }
+}
+
+
+/* Footer Logo */
+.footer-logo {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.footer-logo img {
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.footer-logo:hover img {
+  transform: scale(1.04);
+}
+
+@media (max-width: 768px) {
+  .footer-logo img {
+    width: 200px;
+  }
+}
+  </style>
+</head>
+<body>
+  <div class="announcement">PURE SPICES. BOLD FLAVOUR. &nbsp; | &nbsp; NATURALLY SELECTED, CAREFULLY PACKED</div>
+  <header>
+    <div class="container nav">
+      <a class="brand" href="#home">
+        <img src="../assets/image/logo/word mark logo.png"
+         alt="DRIPONZA Logo"
+         class="brand-logo">
+      </a>
+      <nav class="nav-links" id="navLinks">
+        <a href="#home">Home</a><a href="#products">Our Products</a><a href="#story">Our Story</a><a href="#contact">Contact</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="icon-btn" id="cartOpen" aria-label="Open cart"><i class="bi bi-bag"></i><span class="cart-count" id="cartCount">0</span></button>
+        <a class="btn btn-primary" href="#products">SHOP NOW <i class="bi bi-arrow-up-right"></i></a>
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Toggle menu"><i class="bi bi-list"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="home">
+      <div class="container hero-grid">
+        <div class="hero-content reveal">
+          <div class="eyebrow">NURTURE • GROW • THRIVE</div>
+          <h1>Bring home the <span>real taste</span> of nature.</h1>
+          <p class="hero-copy">Discover carefully selected spices with rich aroma, authentic flavour and uncompromising quality. Make every meal memorable with Driponza.</p>
+          <div class="hero-buttons"><a href="#products" class="btn btn-primary">EXPLORE PRODUCTS <i class="bi bi-arrow-right"></i></a><a href="#story" class="btn btn-outline">OUR STORY</a></div>
+          <div class="hero-meta"><div class="meta-item"><strong>100%</strong><small>Natural goodness</small></div><div class="meta-item"><strong>Fresh</strong><small>Carefully packed</small></div><div class="meta-item"><strong>Pure</strong><small>Authentic flavour</small></div></div>
+        </div>
+        <div class="hero-art reveal">
+          <div class="orbit"></div>
+          <div class="floating-tag tag-one"><b><i class="bi bi-patch-check"></i> Quality first</b>Selected with care</div>
+          <div class="hero-product"><div><div class="pack-logo">Driponza</div><div class="pack-sub">NURTURE • GROW • THRIVE</div></div><div class="pack-spice">
+    <img src="../assets/image/logo/LOGO BG.png" alt="Spice Icon">
+</div><div class="pack-label"><strong>CASSIA CINNAMON</strong><small>PREMIUM WHOLE SPICE • 100 g</small></div></div>
+          <div class="floating-tag tag-two"><b>Pure by nature</b>No artificial colour enhancers</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-band"><div class="container features">
+      <div class="feature"><i class="bi bi-flower1"></i><div><strong>Natural Selection</strong><small>Quality ingredients</small></div></div>
+      <div class="feature"><i class="bi bi-shield-check"></i><div><strong>Quality Checked</strong><small>Carefully packed</small></div></div>
+      <div class="feature"><i class="bi bi-box-seam"></i><div><strong>Fresh Packaging</strong><small>Sealed for freshness</small></div></div>
+      <div class="feature"><i class="bi bi-truck"></i><div><strong>Easy Ordering</strong><small>Order through WhatsApp</small></div></div>
+    </div></section>
+
+    <section class="section" id="products">
+      <div class="container">
+        <div class="section-head reveal"><div><div class="eyebrow">THE COLLECTION</div><h2>Explore our <span style="color:var(--green)">products.</span></h2></div><p>From everyday essentials to aromatic favourites, find the right ingredients for your kitchen.</p></div>
+        <div class="category-row reveal" id="filters">
+          <button class="filter-btn active" data-category="All">All Products</button>
+          <button class="filter-btn" data-category="Whole Spices">Whole Spices</button>
+          <button class="filter-btn" data-category="Powder">Powders</button>
+          <div class="search-wrap"><i class="bi bi-search"></i><input type="search" id="searchInput" placeholder="Search products..." aria-label="Search products"></div>
+        </div>
+        <div class="products-grid" id="productsGrid"></div>
+      </div>
+    </section>
+
+    <section class="section" id="story">
+      <div class="container story-grid">
+        <div class="story-visual reveal">
+  <img
+    src="../assets/image/about/about.jpeg"
+    alt="Driponza - Pure Natural Authentic"
+    class="story-image"
+    loading="lazy"
+  >
+</div>
+        <div class="story-copy reveal"><div class="eyebrow">A LITTLE ABOUT US</div><h2>Good food begins with <span>good ingredients.</span></h2><p>At Driponza, we believe that the right spice can transform an ordinary dish into something extraordinary. We focus on carefully selected ingredients, authentic taste and thoughtful packaging.</p><div class="ticks"><div><i class="bi bi-check-circle-fill"></i> Carefully selected spices</div><div><i class="bi bi-check-circle-fill"></i> Authentic aroma and flavour</div><div><i class="bi bi-check-circle-fill"></i> Packed with care</div></div><a href="#products" class="btn btn-primary">FIND YOUR FAVOURITES <i class="bi bi-arrow-right"></i></a></div>
+      </div>
+    </section>
+
+    <section class="cta"><div class="container cta-inner"><div><div class="eyebrow">READY TO ORDER?</div><h2>Your kitchen deserves the good stuff.</h2><p>Choose your favourites and send your order directly through WhatsApp.</p></div><a href="#products" class="btn btn-primary">SHOP THE COLLECTION <i class="bi bi-arrow-up-right"></i></a></div></section>
+  </main>
+
+  <footer id="contact"><div class="container">
+    <div class="footer-grid">
+      <div class="footer-about"><a class="brand footer-logo" href="#home">
+  <img
+    src="../assets/image/logo/word mark logo.png"
+    alt="Driponza Logo"
+  >
+</a><p>Finest spices, thoughtfully selected. Bringing natural aroma, authentic taste and quality to your kitchen.</p></div>
+      <div class="footer-col"><h4>EXPLORE</h4><a href="#home">Home</a><a href="#products">Products</a><a href="#story">Our Story</a></div>
+      <div class="footer-col"><h4>HELP</h4><a href="#contact">Contact Us</a><a href="#products">How to Order</a><a href="https://wa.me/919946717137" target="_blank">WhatsApp</a></div>
+      <div class="footer-col"><h4>GET IN TOUCH</h4><a href="mailto:driponzatrading@gmail.com">Email Us</a><a href="https://www.driponzatrading.com" target="_blank">Website</a><a href="https://wa.me/919946717137" target="_blank">+91 85939 41385</a></div>
+    </div>
+    <div class="copyright"><span>© <span id="year"></span> DRIPONZA. All rights reserved.</span><span>Made with care. Nurture • Grow • Thrive.</span></div>
+  </div></footer>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
+    <div class="drawer-head"><h3>Your Cart <span style="color:var(--green)" id="cartHeadingCount">(0)</span></h3><button class="close-btn" id="cartClose" aria-label="Close cart">&times;</button></div>
+    <div class="cart-items" id="cartItems"><div class="cart-empty"><i class="bi bi-bag"></i>Your cart is empty.<br><small>Add some favourites to get started.</small></div></div>
+    <div class="drawer-foot"><div class="total-line"><span>Subtotal</span><strong id="cartTotal">₹0</strong></div><button class="btn btn-primary" id="checkoutBtn">CONTINUE TO ORDER <i class="bi bi-whatsapp"></i></button></div>
+  </aside>
+
+  <div class="checkout-modal" id="checkoutModal">
+    <div class="checkout-box">
+      <div class="checkout-head"><h3>Complete your order</h3><button class="close-btn" id="checkoutClose">&times;</button></div>
+      <form id="checkoutForm">
+        <div class="field"><label for="customerName">Your name *</label><input id="customerName" required placeholder="Enter your name"></div>
+        <div class="field"><label for="customerPhone">Phone number *</label><input id="customerPhone" required type="tel" placeholder="Your contact number"></div>
+        <div class="field"><label for="customerAddress">Delivery address *</label><textarea id="customerAddress" required placeholder="House name, place, district, PIN code"></textarea></div>
+        <div class="field"><label for="customerNote">Order note (optional)</label><input id="customerNote" placeholder="Any special instructions?"></div>
+        <div class="checkout-summary" id="checkoutSummary"></div>
+        <button class="btn btn-primary" type="submit" style="width:100%">SEND ORDER ON WHATSAPP <i class="bi bi-whatsapp"></i></button>
+      </form>
+    </div>
+  </div>
+  <div class="toast" id="toast">Added to your cart</div>
+
+  <script>
+    // EDIT THESE SETTINGS FOR YOUR BUSINESS
+    const STORE_NAME = "DRIPONZA";
+    const WHATSAPP_NUMBER = "919946717137"; // Country code + number, digits only. India example: 91XXXXXXXXXX
+    const CURRENCY = "₹";
+
+    // Edit product names, prices, weights and descriptions here.
+    let products = [];
+    const effectivePrice = p => Number(p.offerPrice)>0 && Number(p.offerPrice)<Number(p.price) ? Number(p.offerPrice) : Number(p.price);
+    const esc = v => String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    async function loadProducts(){try{const r=await fetch("../api.php?action=products",{cache:"no-store"});if(!r.ok)throw Error("API unavailable");products=(await r.json()).filter(p=>p.active!==false);renderProducts();renderCart()}catch(e){console.error(e);$("productsGrid").innerHTML="<div class=empty-state>Unable to load products. PHP hosting is required.</div>"}}
+
+    let cart = [];
+    let activeCategory = "All";
+    const $ = id => document.getElementById(id);
+    const money = amount => CURRENCY + Number(amount).toLocaleString("en-IN");
+
+    function renderProducts(){
+      const search = $("searchInput").value.trim().toLowerCase();
+      const filtered = products.filter(p => (activeCategory === "All" || p.category === activeCategory) && ((p.name||"").toLowerCase().includes(search) || (p.description||"").toLowerCase().includes(search)));
+      $("productsGrid").innerHTML = filtered.length ? filtered.map(p => `
+        <article class="product-card reveal">
+          <div class="product-image product-gallery" data-id="${Number(p.id)}">
+            ${p.tag ? `<span class="product-tag">${esc(p.tag)}</span>` : p.featured ? `<span class="product-tag">FEATURED</span>` : ""}
+            ${p.images?.length ? `<img class="gallery-main" src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">` : `<span class="product-emoji">${esc(p.emoji||"🌿")}</span>`}
+            ${p.images?.length>1 ? `<div class="gallery-dots">${p.images.map((im,i)=>`<button type="button" class="gallery-dot ${i===0?'on':''}" onclick="event.stopPropagation();gallerySwitch(${Number(p.id)},${i})" aria-label="Photo ${i+1}"></button>`).join("")}</div><button type="button" class="gallery-next" onclick="event.stopPropagation();galleryNext(${Number(p.id)})" aria-label="Next photo">❯</button>` : ""}
+          </div>
+          <div class="product-info"><div class="product-category">${esc(p.category)} • ${esc(p.weight)}</div><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>
+            <div class="product-bottom"><div class="price">${p.offerPrice>0 && p.offerPrice<p.price ? `<s style="color:#999;font-size:12px;margin-right:5px">${money(p.price)}</s>` : ""}${money(effectivePrice(p))} <small>/ pack</small></div><button class="add-btn" aria-label="Add ${esc(p.name)} to cart" onclick="addToCart(${Number(p.id)})"><i class="bi bi-plus-lg"></i></button></div>
+          </div>
+        </article>`).join("") : `<div class="empty-state">No products found. Try another search.</div>`;
+      observeReveals();
+    }
+    function gallerySwitch(id,index){const p=products.find(x=>x.id===id),el=document.querySelector(`.product-gallery[data-id="${id}"]`);if(!p||!el||!p.images?.[index])return;el.querySelector(".gallery-main").src=p.images[index];el.dataset.current=index;el.querySelectorAll(".gallery-dot").forEach((d,i)=>d.classList.toggle("on",i===index))}
+    function galleryNext(id){const p=products.find(x=>x.id===id),el=document.querySelector(`.product-gallery[data-id="${id}"]`);if(p&&el)gallerySwitch(id,(Number(el.dataset.current||0)+1)%p.images.length)}
+    function addToCart(id){
+      const product = products.find(p => p.id === id);
+      const existing = cart.find(item => item.id === id);
+      existing ? existing.qty++ : cart.push({...product,price:effectivePrice(product),qty:1});
+      renderCart();showToast(product.name + " added to cart");
+    }
+    function changeQty(id,delta){
+      const item = cart.find(p => p.id === id);if(!item)return;
+      item.qty += delta;if(item.qty <= 0)cart = cart.filter(p => p.id !== id);
+      renderCart();
+    }
+    function removeItem(id){cart = cart.filter(p => p.id !== id);renderCart();}
+    function cartTotal(){return cart.reduce((sum,p)=>sum+p.price*p.qty,0)}
+    function renderCart(){
+      const count = cart.reduce((sum,p)=>sum+p.qty,0);
+      $("cartCount").textContent = count;$("cartHeadingCount").textContent = `(${count})`;$("cartTotal").textContent = money(cartTotal());
+      $("cartItems").innerHTML = cart.length ? cart.map(p => `
+        <div class="cart-item"><div class="cart-thumb">${p.images?.length ? `<img src="${esc(p.images[0])}" style="width:100%;height:100%;object-fit:cover;border-radius:7px">` : esc(p.emoji||"🌿")}</div><div><h4>${p.name}</h4><small>${money(p.price)} / ${p.weight}</small><div class="qty"><button onclick="changeQty(${p.id},-1)">−</button><span>${p.qty}</span><button onclick="changeQty(${p.id},1)">+</button></div></div><button class="remove" onclick="removeItem(${p.id})" aria-label="Remove ${p.name}"><i class="bi bi-trash3"></i></button></div>`).join("") : `<div class="cart-empty"><i class="bi bi-bag"></i>Your cart is empty.<br><small>Add some favourites to get started.</small></div>`;
+    }
+    function openCart(){$("overlay").classList.add("show");$("cartDrawer").classList.add("show")}
+    function closeCart(){$("overlay").classList.remove("show");$("cartDrawer").classList.remove("show")}
+    function openCheckout(){
+      if(!cart.length){showToast("Your cart is empty");return}
+      closeCart();
+      $("checkoutSummary").innerHTML = cart.map(p=>`${p.name} × ${p.qty} — ${money(p.price*p.qty)}`).join("<br>") + `<hr style="border-color:var(--line);margin:9px 0"><strong>Total: ${money(cartTotal())}</strong>`;
+      $("checkoutModal").classList.add("show");
+    }
+    function closeCheckout(){$("checkoutModal").classList.remove("show")}
+    function showToast(message){$("toast").textContent=message;$("toast").classList.add("show");clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>$("toast").classList.remove("show"),2200)}
+
+    $("checkoutForm").addEventListener("submit",e=>{
+      e.preventDefault();if(!cart.length)return;
+      const name=$("customerName").value.trim(),phone=$("customerPhone").value.trim(),address=$("customerAddress").value.trim(),note=$("customerNote").value.trim();
+      const lines=cart.map((p,i)=>`${i+1}. ${p.name} (${p.weight}) x ${p.qty} = ${money(p.price*p.qty)}`);
+      const message=`Hello ${STORE_NAME}, I would like to place an order:\n\n${lines.join("\n")}\n\nSubtotal: ${money(cartTotal())}\n\nCustomer Details:\nName: ${name}\nPhone: ${phone}\nAddress: ${address}${note ? `\nNote: ${note}` : ""}\n\nPlease confirm availability and delivery charges.`;
+      const url=`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+      window.open(url,"_blank");
+    });
+
+    $("filters").addEventListener("click",e=>{
+      const btn=e.target.closest(".filter-btn");if(!btn)return;
+      document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");activeCategory=btn.dataset.category;renderProducts();
+    });
+    $("searchInput").addEventListener("input",renderProducts);
+    $("cartOpen").addEventListener("click",openCart);$("cartClose").addEventListener("click",closeCart);$("overlay").addEventListener("click",closeCart);
+    $("checkoutBtn").addEventListener("click",openCheckout);$("checkoutClose").addEventListener("click",closeCheckout);
+    $("checkoutModal").addEventListener("click",e=>{if(e.target===$("checkoutModal"))closeCheckout()});
+    $("menuToggle").addEventListener("click",()=>$("navLinks").classList.toggle("open"));
+    document.querySelectorAll(".nav-links a").forEach(a=>a.addEventListener("click",()=>$("navLinks").classList.remove("open")));
+    $("year").textContent=new Date().getFullYear();
+
+    let revealObserver;
+    function observeReveals(){
+      if(!("IntersectionObserver" in window)){document.querySelectorAll(".reveal").forEach(el=>el.classList.add("visible"));return}
+      if(revealObserver)revealObserver.disconnect();
+      revealObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("visible");revealObserver.unobserve(entry.target)}}),{threshold:.12});
+      document.querySelectorAll(".reveal:not(.visible)").forEach(el=>revealObserver.observe(el));
+    }
+    renderCart();observeReveals();loadProducts();
+  </script>
+</body>
+</html>
