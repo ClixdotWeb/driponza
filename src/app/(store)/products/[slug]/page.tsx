@@ -4,10 +4,13 @@ import { notFound } from "next/navigation";
 import { ChevronRight, MessageCircle, PackageCheck, ShieldCheck } from "lucide-react";
 import { ProductGallery } from "@/components/store/ProductGallery";
 import { ProductPurchase } from "@/components/store/ProductPurchase";
+import { ReportReview, ReviewForm } from "@/components/store/CustomerForms";
+import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth/session";
+import { formatDate } from "@/lib/utils";
 import { ProductCard } from "@/components/store/ProductCard";
 import { Reveal } from "@/components/motion/Reveal";
-import { getSettings } from "@/lib/settings";
-import { razorpayConfigured } from "@/lib/razorpay";
+import { bankTransferReady, getSettings } from "@/lib/settings";
 import { getProductBySlug, getRelatedProducts } from "@/server/catalog";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -25,7 +28,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProductPage({ params }: Props) {
   const product = await getProductBySlug((await params).slug);
   if (!product) notFound();
-  const [related, settings] = await Promise.all([getRelatedProducts(product), getSettings()]);
+  const [related, settings, reviews, user] = await Promise.all([
+    getRelatedProducts(product),
+    getSettings(),
+    db.review.findMany({ where: { productId: product.id, status: "APPROVED" }, orderBy: [{ verified: "desc" }, { createdAt: "desc" }], take: 30, include: { user: { select: { name: true } } } }),
+    getCurrentUser(),
+  ]);
+  const avg = reviews.length ? reviews.reduce((n, r) => n + r.rating, 0) / reviews.length : 0;
   const first = product.variants[0];
 
   const jsonLd = {
@@ -72,7 +81,7 @@ export default async function ProductPage({ params }: Props) {
           )}
           <ul className="mt-8 grid gap-3 border-t border-cream-200 pt-6 text-sm text-ink-700">
             <li className="flex items-center gap-3"><PackageCheck className="size-4 text-green-600" /> Carefully selected and packed with care</li>
-            {razorpayConfigured() && <li className="flex items-center gap-3"><ShieldCheck className="size-4 text-green-600" /> Secure payments via Razorpay</li>}
+            {bankTransferReady(settings) && <li className="flex items-center gap-3"><ShieldCheck className="size-4 text-green-600" /> Pay by bank transfer / UPI – confirmed once verified</li>}
             <li className="flex items-center gap-3">
               <MessageCircle className="size-4 text-green-600" />
               <span>
@@ -83,6 +92,34 @@ export default async function ProductPage({ params }: Props) {
               </span>
             </li>
           </ul>
+        </div>
+      </section>
+
+      <section className="container-x border-t border-cream-200 py-16" aria-labelledby="reviews-title">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.4fr]">
+          <div>
+            <h2 id="reviews-title" className="display text-[clamp(2.2rem,4.5vw,3.2rem)]">Reviews</h2>
+            {reviews.length ? (
+              <p className="mt-2 text-sm text-ink-700"><span className="text-amber-500">{"★".repeat(Math.round(avg))}</span> {avg.toFixed(1)} out of 5 · {reviews.length} review{reviews.length > 1 ? "s" : ""}</p>
+            ) : (
+              <p className="mt-2 text-sm text-ink-500">No reviews yet.</p>
+            )}
+            <div className="mt-6">
+              {user ? <ReviewForm productId={product.id} /> : <p className="text-sm text-ink-700"><a href={`/login?next=/products/${product.slug}`} className="text-green-600 underline">Sign in</a> to write a review.</p>}
+            </div>
+          </div>
+          {reviews.length > 0 && (
+            <ul className="grid gap-4">
+              {reviews.map((r) => (
+                <li key={r.id} className="card p-5 text-sm">
+                  <p className="text-amber-500" aria-label={`${r.rating} out of 5`}>{"★".repeat(r.rating)}<span className="text-cream-200">{"★".repeat(5 - r.rating)}</span></p>
+                  {r.title && <p className="mt-1 font-medium">{r.title}</p>}
+                  <p className="mt-1 whitespace-pre-line text-ink-700">{r.body}</p>
+                  <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-500">{r.user.name.split(" ")[0]} · {formatDate(r.createdAt)}{r.verified && <span className="rounded-full bg-botanical-100 px-2 py-0.5 text-green-600">Verified purchase</span>}<ReportReview id={r.id} /></p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
 

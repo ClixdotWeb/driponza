@@ -29,27 +29,7 @@ export function safeRedirect(target: unknown, fallback = "/") {
   return target;
 }
 
-export const ORDER_STATUS_LABEL: Record<string, string> = {
-  PENDING_PAYMENT: "Awaiting payment",
-  CONFIRMED: "Confirmed",
-  PROCESSING: "Processing",
-  SHIPPED: "Shipped",
-  DELIVERED: "Delivered",
-  ON_HOLD: "On hold",
-  CANCEL_REQUESTED: "Cancellation requested",
-  CANCELLED: "Cancelled",
-  PAYMENT_FAILED: "Payment failed",
-  REFUNDED: "Refunded",
-};
-
-export const PAYMENT_STATUS_LABEL: Record<string, string> = {
-  PENDING: "Pending",
-  PAID: "Paid",
-  FAILED: "Failed",
-  REFUNDED: "Refunded",
-  PARTIALLY_REFUNDED: "Partially refunded",
-  NOT_REQUIRED: "Pay on delivery",
-};
+export { ORDER_STATUS_LABEL, PAYMENT_STATUS_LABEL } from "@/lib/order-status";
 
 /** "DRIPONZA Premium Whole Black Pepper" → "Black Pepper" for compact, elegant labels. */
 export function shortSpiceName(name: string) {

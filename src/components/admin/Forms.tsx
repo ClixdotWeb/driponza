@@ -92,7 +92,7 @@ type Coupon = {
   id: string;
   code: string;
   description: string | null;
-  type: "PERCENT" | "FIXED";
+  type: "PERCENT" | "FIXED" | "FREE_SHIPPING";
   value: string;
   minSubtotal: string;
   maxDiscount: string;
@@ -101,9 +101,25 @@ type Coupon = {
   usageLimit: string;
   perUserLimit: string;
   isActive: boolean;
+  firstOrderOnly: boolean;
+  productIds: string[];
+  categoryIds: string[];
 };
 
-export function CouponForm({ coupon, onDone }: { coupon?: Coupon; onDone?: () => void }) {
+export type CouponScope = { products: Array<{ id: string; name: string }>; categories: Array<{ id: string; name: string }> };
+
+function ScopePicker({ label, name, options, selected }: { label: string; name: string; options: Array<{ id: string; name: string }>; selected: string[] }) {
+  return (
+    <div className="sm:col-span-2">
+      <label className="field-label">{label}</label>
+      <select multiple name={name} defaultValue={selected} aria-label={label} className="field-input h-24 py-1 text-[13px]">
+        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
+export function CouponForm({ coupon, onDone, scope }: { coupon?: Coupon; onDone?: () => void; scope?: CouponScope }) {
   const [state, action] = useRefreshingAction(saveCouponAction);
   useEffect(() => {
     if (state?.success) onDone?.();
@@ -114,7 +130,7 @@ export function CouponForm({ coupon, onDone }: { coupon?: Coupon; onDone?: () =>
       <div className="sm:col-span-2 lg:col-span-4"><FormMessage state={state} /></div>
       {coupon && <input type="hidden" name="id" value={coupon.id} />}
       <div><label className="field-label">Code</label><input aria-label="Code" name="code" defaultValue={coupon?.code} className="field-input py-2 uppercase" required />{fe.code && <p className="field-error">{fe.code}</p>}</div>
-      <div><label className="field-label">Type</label><select aria-label="Type" name="type" defaultValue={coupon?.type ?? "PERCENT"} className="field-input py-2"><option value="PERCENT">Percent off</option><option value="FIXED">Fixed ₹ off</option></select></div>
+      <div><label className="field-label">Type</label><select aria-label="Type" name="type" defaultValue={coupon?.type ?? "PERCENT"} className="field-input py-2"><option value="PERCENT">Percent off</option><option value="FIXED">Fixed ₹ off</option><option value="FREE_SHIPPING">Free shipping</option></select></div>
       <div><label className="field-label">Value</label><input aria-label="Value" name="value" defaultValue={coupon?.value} className="field-input py-2" required />{fe.value && <p className="field-error">{fe.value}</p>}</div>
       <div><label className="field-label">Max discount ₹</label><input aria-label="Max discount ₹" name="maxDiscount" defaultValue={coupon?.maxDiscount} className="field-input py-2" /></div>
       <div><label className="field-label">Min. subtotal ₹</label><input aria-label="Min. subtotal ₹" name="minSubtotal" defaultValue={coupon?.minSubtotal} className="field-input py-2" /></div>
@@ -122,6 +138,9 @@ export function CouponForm({ coupon, onDone }: { coupon?: Coupon; onDone?: () =>
       <div><label className="field-label">Ends</label><input aria-label="Ends" name="endsAt" type="date" defaultValue={coupon?.endsAt} className="field-input py-2" /></div>
       <div><label className="field-label">Total uses</label><input aria-label="Total uses" name="usageLimit" inputMode="numeric" defaultValue={coupon?.usageLimit} placeholder="Unlimited" className="field-input py-2" /></div>
       <div><label className="field-label">Uses per customer</label><input aria-label="Uses per customer" name="perUserLimit" inputMode="numeric" defaultValue={coupon?.perUserLimit} placeholder="Unlimited" className="field-input py-2" /></div>
+      <ScopePicker label="Only these products (optional)" name="productIds" options={scope?.products ?? []} selected={coupon?.productIds ?? []} />
+      <ScopePicker label="Only these categories (optional)" name="categoryIds" options={scope?.categories ?? []} selected={coupon?.categoryIds ?? []} />
+      <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="firstOrderOnly" defaultChecked={coupon?.firstOrderOnly ?? false} className="accent-green-600" /> First order only</label>
       <div className="sm:col-span-2"><label className="field-label">Description (internal)</label><input aria-label="Description" name="description" defaultValue={coupon?.description ?? ""} className="field-input py-2" /></div>
       <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="isActive" defaultChecked={coupon?.isActive ?? true} className="accent-green-600" /> Active</label>
       <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
@@ -142,12 +161,12 @@ function DeleteCoupon({ id }: { id: string }) {
   );
 }
 
-export function CouponRow({ coupon, summary }: { coupon: Coupon; summary: React.ReactNode }) {
+export function CouponRow({ coupon, summary, scope }: { coupon: Coupon; summary: React.ReactNode; scope?: CouponScope }) {
   const [editing, setEditing] = useState(false);
   return (
     <li className="rounded-2xl border border-cream-200 bg-white p-5">
       {editing ? (
-        <CouponForm coupon={coupon} onDone={() => setEditing(false)} />
+        <CouponForm coupon={coupon} scope={scope} onDone={() => setEditing(false)} />
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">
           {summary}

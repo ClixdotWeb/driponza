@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth/session";
-import { MAX_UPLOAD_BYTES, storeImage } from "@/lib/storage";
+import { getStaff } from "@/lib/auth/session";
+import { hasPermission } from "@/lib/permissions";
+import { uploadMedia } from "@/server/media";
+import { audit } from "@/server/audit";
+import { MAX_UPLOAD_BYTES } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "ADMIN") return NextResponse.json({ error: "Not authorised" }, { status: 403 });
+  const staff = await getStaff();
+  if (!staff || !(hasPermission(staff.permissions, "media.manage") || hasPermission(staff.permissions, "products.edit")))
+    return NextResponse.json({ error: "Not authorised" }, { status: 403 });
 
   // CSRF: route handlers don't get Server Actions' built-in origin check, so verify it here.
   const origin = req.headers.get("origin");
@@ -29,16 +33,17 @@ export async function POST(req: Request) {
   const errors: string[] = [];
   for (const file of files) {
     if (file.size > MAX_UPLOAD_BYTES) {
-      errors.push(`${file.name}: larger than 8 MB`);
+      errors.push(`${file.name.slice(0, 80)}: larger than ${Math.round(MAX_UPLOAD_BYTES / 1048576)} MB`);
       continue;
     }
     try {
-      const stored = await storeImage(Buffer.from(await file.arrayBuffer()));
+      const stored = await uploadMedia(Buffer.from(await file.arrayBuffer()), "products", { alt: product.name, actorId: staff.id });
       await db.productImage.create({ data: { productId, url: stored.url, storageId: stored.storageId, alt: product.name, position: position++ } });
     } catch (err) {
-      errors.push(`${file.name}: ${err instanceof Error ? err.message : "upload failed"}`);
+      errors.push(`${file.name.slice(0, 80)}: ${err instanceof Error ? err.message : "upload failed"}`);
     }
   }
+  await audit({ actorId: staff.id, action: "media.upload", entity: "Product", entityId: productId, summary: `Uploaded ${files.length - errors.length} image(s) to ${product.name}` });
   revalidatePath("/", "layout");
   return NextResponse.json({ ok: errors.length === 0, errors });
 }

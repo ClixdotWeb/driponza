@@ -37,6 +37,8 @@ export function RegisterForm({ next }: { next?: string }) {
       <Field label="Email" name="email" type="email" autoComplete="email" required defaultValue={state?.values?.email} error={fe.email} />
       <Field label="Mobile number (optional)" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={state?.values?.phone} error={fe.phone} hint="Used for delivery updates" />
       <Field label="Password" name="password" type="password" autoComplete="new-password" required minLength={8} error={fe.password} hint="At least 8 characters" />
+      <Field label="Confirm password" name="confirm" type="password" autoComplete="new-password" required minLength={8} error={fe.confirm} />
+      <label className="flex items-start gap-2 text-sm text-ink-700"><input type="checkbox" name="marketing" className="mt-0.5 accent-green-600" /> Email me about new spices and offers (optional)</label>
       <SubmitButton className="w-full py-4" pendingText="Creating account…">Create account</SubmitButton>
       <p className="text-center text-sm text-ink-500">
         Already have an account?{" "}

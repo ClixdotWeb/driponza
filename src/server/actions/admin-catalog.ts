@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { assertAdmin } from "@/lib/auth/session";
-import { deleteStoredImage } from "@/lib/storage";
+import { assertPermission } from "@/lib/auth/session";
+import { releaseMedia } from "@/server/media";
 import { slugify } from "@/lib/utils";
 import type { FormState } from "@/server/actions/auth";
 
@@ -52,7 +52,7 @@ const productSchema = z.object({
 });
 
 export async function saveProductAction(_: FormState, form: FormData): Promise<FormState> {
-  const admin = await assertAdmin();
+  const admin = await assertPermission("products.edit");
   let payload: unknown;
   try {
     payload = JSON.parse(String(form.get("payload") ?? ""));
@@ -141,7 +141,7 @@ export async function saveProductAction(_: FormState, form: FormData): Promise<F
 }
 
 export async function deleteProductAction(productId: string): Promise<{ ok: boolean; message: string }> {
-  await assertAdmin();
+  await assertPermission("products.delete");
   const product = await db.product.findUnique({
     where: { id: productId },
     include: { images: true, variants: { include: { _count: { select: { orderItems: true } } } } },
@@ -154,20 +154,20 @@ export async function deleteProductAction(productId: string): Promise<{ ok: bool
     return { ok: true, message: "This product has orders, so it was archived (hidden from the shop) instead of deleted." };
   }
   await db.product.delete({ where: { id: productId } });
-  await Promise.all(product.images.map((i) => deleteStoredImage(i.storageId)));
+  for (const i of product.images) await releaseMedia(i.storageId, i.url);
   refreshStorefront();
   return { ok: true, message: "Product deleted." };
 }
 
 export async function toggleFeaturedAction(productId: string, featured: boolean) {
-  await assertAdmin();
+  await assertPermission("products.edit");
   await db.product.update({ where: { id: productId }, data: { isFeatured: featured } });
   refreshStorefront();
   revalidatePath("/admin/content");
 }
 
 export async function setFeaturedOrderAction(productId: string, order: number) {
-  await assertAdmin();
+  await assertPermission("products.edit");
   await db.product.update({ where: { id: productId }, data: { featuredOrder: Math.max(0, Math.min(999, Math.round(order))) } });
   refreshStorefront();
   revalidatePath("/admin/content");
@@ -176,17 +176,17 @@ export async function setFeaturedOrderAction(productId: string, order: number) {
 // ─────────── Images ───────────
 
 export async function deleteImageAction(imageId: string) {
-  await assertAdmin();
+  await assertPermission("media.manage");
   const image = await db.productImage.findUnique({ where: { id: imageId } });
   if (!image) return;
   await db.productImage.delete({ where: { id: imageId } });
-  if (image.storageId) await deleteStoredImage(image.storageId);
+  await releaseMedia(image.storageId, image.url);
   refreshStorefront();
   revalidatePath(`/admin/products/${image.productId}`);
 }
 
 export async function moveImageAction(imageId: string, direction: -1 | 1) {
-  await assertAdmin();
+  await assertPermission("products.edit");
   const image = await db.productImage.findUnique({ where: { id: imageId } });
   if (!image) return;
   const images = await db.productImage.findMany({ where: { productId: image.productId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] });
@@ -200,7 +200,7 @@ export async function moveImageAction(imageId: string, direction: -1 | 1) {
 }
 
 export async function updateImageAltAction(imageId: string, alt: string) {
-  await assertAdmin();
+  await assertPermission("products.edit");
   await db.productImage.update({ where: { id: imageId }, data: { alt: alt.trim().slice(0, 160) || null } });
   refreshStorefront();
 }
@@ -217,7 +217,7 @@ const categorySchema = z.object({
 });
 
 export async function saveCategoryAction(_: FormState, form: FormData): Promise<FormState> {
-  await assertAdmin();
+  await assertPermission("categories.manage");
   const parsed = categorySchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { fieldErrors: issues(parsed.error) };
   const d = parsed.data;
@@ -233,7 +233,7 @@ export async function saveCategoryAction(_: FormState, form: FormData): Promise<
 }
 
 export async function deleteCategoryAction(id: string): Promise<{ ok: boolean; message: string }> {
-  await assertAdmin();
+  await assertPermission("categories.manage");
   const count = await db.product.count({ where: { categoryId: id } });
   if (count > 0) return { ok: false, message: `Move or delete its ${count} product(s) first.` };
   await db.category.delete({ where: { id } });
@@ -253,7 +253,7 @@ const adjustSchema = z.object({
 });
 
 export async function adjustStockAction(_: FormState, form: FormData): Promise<FormState> {
-  const admin = await assertAdmin();
+  const admin = await assertPermission("inventory.manage");
   const parsed = adjustSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: "Enter a valid quantity." };
   const { variantId, mode, quantity, reason, note } = parsed.data;
@@ -276,7 +276,7 @@ export async function adjustStockAction(_: FormState, form: FormData): Promise<F
 }
 
 export async function markReviewedAction(productId: string) {
-  await assertAdmin();
+  await assertPermission("products.edit");
   await db.product.update({ where: { id: productId }, data: { needsReview: false } });
   revalidatePath("/admin", "layout");
 }
@@ -287,8 +287,11 @@ const couponSchema = z.object({
   id: z.string().optional(),
   code: z.string().trim().toUpperCase().min(3, "3+ characters").max(30).regex(/^[A-Z0-9_-]+$/, "Letters, numbers, - and _ only"),
   description: z.string().trim().max(200).optional(),
-  type: z.enum(["PERCENT", "FIXED"]),
-  value: money,
+  type: z.enum(["PERCENT", "FIXED", "FREE_SHIPPING"]),
+  value: money.or(z.literal("")).optional(),
+  firstOrderOnly: z.preprocess((v) => v === "on" || v === "true", z.boolean()),
+  productIds: z.array(z.string().cuid()).max(200).default([]),
+  categoryIds: z.array(z.string().cuid()).max(100).default([]),
   minSubtotal: money.or(z.literal("")).optional(),
   maxDiscount: money.or(z.literal("")).optional(),
   startsAt: z.string().optional(),
@@ -299,10 +302,11 @@ const couponSchema = z.object({
 });
 
 export async function saveCouponAction(_: FormState, form: FormData): Promise<FormState> {
-  await assertAdmin();
-  const parsed = couponSchema.safeParse(Object.fromEntries(form));
+  await assertPermission("coupons.manage");
+  const parsed = couponSchema.safeParse({ ...Object.fromEntries(form), productIds: form.getAll("productIds"), categoryIds: form.getAll("categoryIds") });
   if (!parsed.success) return { fieldErrors: issues(parsed.error) };
   const d = parsed.data;
+  if (d.type !== "FREE_SHIPPING" && !d.value) return { fieldErrors: { value: "Enter a value" } };
   if (d.type === "PERCENT" && (Number(d.value) <= 0 || Number(d.value) > 100)) return { fieldErrors: { value: "Percent must be 1–100" } };
   const clash = await db.coupon.findFirst({ where: { code: d.code, NOT: d.id ? { id: d.id } : undefined } });
   if (clash) return { fieldErrors: { code: "Code already exists" } };
@@ -311,7 +315,10 @@ export async function saveCouponAction(_: FormState, form: FormData): Promise<Fo
     code: d.code,
     description: d.description || null,
     type: d.type,
-    value: d.value,
+    value: d.type === "FREE_SHIPPING" ? "0" : d.value!,
+    firstOrderOnly: d.firstOrderOnly,
+    productIds: d.productIds,
+    categoryIds: d.categoryIds,
     minSubtotal: d.minSubtotal || null,
     maxDiscount: d.maxDiscount || null,
     startsAt: date(d.startsAt),
@@ -327,7 +334,7 @@ export async function saveCouponAction(_: FormState, form: FormData): Promise<Fo
 }
 
 export async function deleteCouponAction(id: string) {
-  await assertAdmin();
+  await assertPermission("coupons.manage");
   const used = await db.order.count({ where: { couponId: id } });
   if (used > 0) await db.coupon.update({ where: { id }, data: { isActive: false } });
   else await db.coupon.delete({ where: { id } });

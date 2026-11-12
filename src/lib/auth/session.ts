@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { hashToken, randomToken } from "./tokens";
+import { hasPermission, type Permission } from "@/lib/permissions";
 
 export const SESSION_COOKIE = "dz_session";
 const SESSION_DAYS = 30;
@@ -57,19 +58,46 @@ export async function requireUser(returnTo = "/account") {
   return user;
 }
 
-export async function requireAdmin() {
+export type StaffUser = SessionUser & { permissions: string[]; roleName: string | null };
+
+/** Staff = ADMIN account with an assigned role. Permissions are re-read from the DB on every request. */
+export const getStaff = cache(async (): Promise<StaffUser | null> => {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "ADMIN") return null;
+  const row = await db.user.findUnique({ where: { id: user.id }, select: { staffRole: { select: { name: true, permissions: true } } } });
+  return { ...user, permissions: row?.staffRole?.permissions ?? [], roleName: row?.staffRole?.name ?? null };
+});
+
+export async function requireStaff() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/admin");
-  if (user.role !== "ADMIN") redirect("/");
-  return user;
+  const staff = await getStaff();
+  if (!staff) redirect("/");
+  return staff;
 }
 
-/** For server actions / route handlers: throw instead of redirecting. */
-export async function assertAdmin() {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "ADMIN") throw new Error("Not authorised");
-  return user;
+/** Page guard: redirects to the dashboard with a notice if the role lacks the permission. */
+export async function requirePermission(permission: Permission) {
+  const staff = await requireStaff();
+  if (!hasPermission(staff.permissions, permission)) redirect(`/admin?denied=${encodeURIComponent(permission)}`);
+  return staff;
 }
+
+export class ForbiddenError extends Error {
+  constructor(permission: string) {
+    super(`You don't have permission to do this (${permission}).`);
+  }
+}
+
+/** Action/route guard: throws instead of redirecting. */
+export async function assertPermission(permission: Permission) {
+  const staff = await getStaff();
+  if (!staff || !hasPermission(staff.permissions, permission)) throw new ForbiddenError(permission);
+  return staff;
+}
+
+/** @deprecated use requireStaff / requirePermission */
+export const requireAdmin = requireStaff;
 
 export function clientIp(h: Headers) {
   return (h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "unknown").slice(0, 64);

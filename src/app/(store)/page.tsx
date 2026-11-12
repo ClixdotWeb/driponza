@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
@@ -9,8 +10,7 @@ import { Faq, type FaqItem } from "@/components/home/Faq";
 import { ProductCard } from "@/components/store/ProductCard";
 import { ParallaxMedia, Reveal } from "@/components/motion/Reveal";
 import { BayLeaf, Cardamom, Cinnamon, Clove, Nutmeg, Peppercorn, StarAnise } from "@/components/spices/Spices";
-import { getSettings } from "@/lib/settings";
-import { razorpayConfigured } from "@/lib/razorpay";
+import { bankTransferReady, getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/money";
 import { cn, shortSpiceName } from "@/lib/utils";
 import { getFeaturedProducts, searchProducts, type ProductView } from "@/server/catalog";
@@ -77,7 +77,7 @@ function KitchenArt({ kind, uid }: { kind: string; uid: string }) {
 const findBySpice = (products: ProductView[], spice: string) => products.find((p) => p.name.toLowerCase().includes(spice));
 
 export default async function HomePage() {
-  const [settings, featured, all] = await Promise.all([getSettings(), getFeaturedProducts(8), searchProducts({})]);
+  const [settings, featured, all, dbFaq] = await Promise.all([getSettings(), getFeaturedProducts(8), searchProducts({}), db.faqItem.findMany({ where: { isPublished: true }, orderBy: { position: "asc" } })]);
   const { content, contact, commerce } = settings;
   const collection = featured.length ? featured : all;
   const handful = ["cardamom", "clove", "star anise", "black pepper", "cinnamon"].map((sp) => {
@@ -86,13 +86,13 @@ export default async function HomePage() {
   });
   const pairing = all.map((p) => ({ p, uses: DISHES.map((d) => d.match.test(p.description)) }));
 
-  const payment = [razorpayConfigured() && "secure online payment (UPI, cards, net banking and wallets via Razorpay)", commerce.codEnabled && "cash on delivery"].filter(Boolean).join(" or ");
+  const payment = [bankTransferReady(settings) && "bank transfer / UPI", commerce.codEnabled && "cash on delivery"].filter(Boolean).join(" or ");
   const faq: FaqItem[] = [
     {
       q: "How do I place an order?",
       a: (
         <>
-          Add your favourite spices to the cart and check out with a free account{payment ? ` — pay by ${payment}` : ""}.
+          Add your favourite spices to the cart and check out as a guest or with a free account{payment ? ` — pay by ${payment}` : ""}.
           {commerce.whatsappOrdering && <> You can also send your cart to us on <a className="font-medium text-green-600 underline" href={`https://wa.me/${contact.whatsapp}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>.</>}
         </>
       ),
@@ -321,7 +321,7 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-          <Faq items={faq} />
+          <Faq items={dbFaq.length ? dbFaq.map((x) => ({ q: x.question, a: x.answer })) : faq} />
         </div>
       </section>
 

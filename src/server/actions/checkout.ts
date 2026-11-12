@@ -1,235 +1,208 @@
 "use server";
 
 import { z } from "zod";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSettings } from "@/lib/settings";
-import { razorpay, razorpayConfigured, verifyCheckoutSignature } from "@/lib/razorpay";
 import { getCart, ensureCartId } from "@/server/cart";
-import {
-  createOrderFromCart,
-  createRazorpayOrderFor,
-  markOrderPaid,
-  markPaymentFailed,
-  priceCart,
-  setOrderStatus,
-  validateCoupon,
-  type Pricing,
-  type ShippingAddressInput,
-} from "@/server/orders";
+import { createOrder, customerCancel, hashGuestToken, OrderError, quoteCart, submitBankTransfer, type Quote } from "@/server/orders";
 import { addressSchema } from "@/server/validation";
+import { MAX_UPLOAD_BYTES } from "@/lib/storage";
+import { uploadMedia } from "@/server/media";
+import { toPaise } from "@/lib/money";
 
-type RazorpayLaunch = {
-  keyId: string;
-  razorpayOrderId: string;
-  amountPaise: number;
-  orderNumber: string;
-  prefill: { name: string; email: string; contact: string };
-};
+const methodSchema = z.enum(["BANK_TRANSFER", "COD"]);
+const pincodeSchema = z.string().trim().regex(/^[1-9]\d{5}$/);
 
-export type PlaceOrderResult =
-  | { ok: true; orderNumber: string; razorpay?: RazorpayLaunch }
-  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+export type QuoteInput = { pincode?: string | null; state?: string | null; method?: "BANK_TRANSFER" | "COD" | null; email?: string | null };
+
+async function quoteFor(input: QuoteInput, couponCode: string | null): Promise<Quote> {
+  const user = await getCurrentUser();
+  const pin = pincodeSchema.safeParse(input.pincode ?? "");
+  return quoteCart({
+    cart: await getCart(),
+    couponCode,
+    pincode: pin.success ? pin.data : null,
+    state: input.state ? String(input.state).slice(0, 60) : null,
+    method: methodSchema.safeParse(input.method).success ? (input.method as "BANK_TRANSFER" | "COD") : null,
+    userId: user?.id ?? null,
+    email: user?.email ?? (z.string().email().safeParse(input.email).success ? String(input.email) : null),
+  });
+}
+
+/** Re-prices the cart on the server whenever the PIN, state or payment method changes. */
+export async function quoteAction(input: QuoteInput): Promise<Quote> {
+  const cart = await getCart();
+  return quoteFor(input, cart.couponCode);
+}
+
+export async function applyCouponAction(code: string, input: QuoteInput): Promise<{ ok: boolean; error?: string; quote: Quote }> {
+  const limited = await rateLimit("coupon", 20, 10 * 60_000);
+  if (!limited.ok) return { ok: false, error: "Too many attempts – please wait a moment.", quote: await quoteAction(input) };
+  const normalised = String(code).trim().toUpperCase().slice(0, 40);
+  if (!normalised) return { ok: false, error: "Enter a coupon code", quote: await quoteAction(input) };
+  const quote = await quoteFor(input, normalised);
+  const cartId = await ensureCartId();
+  await db.cart.update({ where: { id: cartId }, data: { couponCode: quote.coupon ? quote.coupon.code : null } });
+  if (!quote.coupon) return { ok: false, error: quote.couponError ?? "This coupon is not valid.", quote: await quoteFor(input, null) };
+  return { ok: true, quote };
+}
+
+export async function removeCouponAction(input: QuoteInput): Promise<Quote> {
+  const cartId = await ensureCartId();
+  await db.cart.update({ where: { id: cartId }, data: { couponCode: null } });
+  return quoteFor(input, null);
+}
+
+export type PlaceOrderResult = { ok: true; url: string } | { ok: false; error: string; fieldErrors?: Record<string, string>; quote?: Quote };
+
+const contactSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address").max(160),
+});
 
 const placeOrderSchema = z.object({
+  contact: contactSchema.optional(),
   addressId: z.string().cuid().optional(),
   address: addressSchema.optional(),
   saveAddress: z.boolean().default(false),
-  method: z.enum(["RAZORPAY", "COD"]),
-  couponCode: z.string().trim().max(40).optional(),
+  method: methodSchema,
+  expectedTotalPaise: z.number().int().min(0),
+  deliveryInstructions: z.string().trim().max(300).optional(),
   note: z.string().trim().max(500).optional(),
+  acceptTerms: z.literal(true, { message: "Please accept the terms to continue" }),
 });
 
-export async function applyCouponAction(code: string): Promise<{ ok: boolean; error?: string; pricing?: Pricing }> {
-  const limited = await rateLimit("coupon", 20, 10 * 60_000);
-  if (!limited.ok) return { ok: false, error: "Too many attempts – please wait a moment." };
-  const user = await getCurrentUser();
-  const cart = await getCart();
-  const result = await validateCoupon(code, cart.subtotalPaise, user?.id ?? null);
-  const cartId = await ensureCartId();
-  if (!result.ok) {
-    await db.cart.update({ where: { id: cartId }, data: { couponCode: null } });
-    return { ok: false, error: result.error, pricing: await priceCart(cart, null, user?.id ?? null) };
-  }
-  await db.cart.update({ where: { id: cartId }, data: { couponCode: result.coupon.code } });
-  return { ok: true, pricing: await priceCart(cart, result.coupon.code, user?.id ?? null) };
-}
-
-export async function removeCouponAction(): Promise<Pricing> {
-  const user = await getCurrentUser();
-  const cartId = await ensureCartId();
-  await db.cart.update({ where: { id: cartId }, data: { couponCode: null } });
-  return priceCart(await getCart(), null, user?.id ?? null);
-}
-
 export async function placeOrderAction(input: unknown): Promise<PlaceOrderResult> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Please sign in to place your order." };
   const limited = await rateLimit("checkout", 10, 10 * 60_000);
   if (!limited.ok) return { ok: false, error: "Too many attempts – please wait a few minutes." };
+  const user = await getCurrentUser();
 
   const parsed = placeOrderSchema.safeParse(input);
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
-    for (const i of parsed.error.issues) fieldErrors[i.path.slice(-1).join(".")] ??= i.message;
+    for (const i of parsed.error.issues) fieldErrors[String(i.path.slice(-1)[0])] ??= i.message;
     return { ok: false, error: "Please check the highlighted fields.", fieldErrors };
   }
   const data = parsed.data;
-  const { commerce } = await getSettings();
+  const email = user?.email ?? data.contact?.email;
+  if (!email) return { ok: false, error: "Enter your email address.", fieldErrors: { email: "Enter a valid email address" } };
 
-  if (data.method === "COD" && !commerce.codEnabled) return { ok: false, error: "Cash on delivery is not available." };
-  if (data.method === "RAZORPAY" && !razorpayConfigured()) {
-    return { ok: false, error: "Online payment is not available yet (awaiting Razorpay credentials). Please try again later or order on WhatsApp." };
-  }
-
-  // Resolve the delivery address (saved address must belong to this customer).
-  let address: ShippingAddressInput | undefined = data.address;
+  let address = data.address;
   if (data.addressId) {
+    if (!user) return { ok: false, error: "Please enter a delivery address." };
     const saved = await db.address.findFirst({ where: { id: data.addressId, userId: user.id } });
     if (!saved) return { ok: false, error: "Please choose a delivery address." };
-    address = saved;
+    address = { ...saved, state: saved.state as NonNullable<typeof address>["state"] };
   }
   if (!address) return { ok: false, error: "Please add a delivery address." };
 
   const cart = await getCart();
-  if (!cart.lines.length) return { ok: false, error: "Your cart is empty." };
-  if (cart.hasProblems) return { ok: false, error: "Some items in your cart need attention – please review your cart." };
-
-  const pricing = await priceCart(cart, data.couponCode || null, user.id);
-  if (data.couponCode && pricing.couponError) return { ok: false, error: pricing.couponError };
-  if (pricing.totalPaise < 100) return { ok: false, error: "Order total must be at least ₹1." };
-
-  let order;
   try {
-    order = await createOrderFromCart({ user, cart, pricing, address, method: data.method, note: data.note });
+    const { order, guestToken } = await createOrder({
+      user: user ? { id: user.id, email: user.email } : null,
+      email,
+      cart,
+      couponCode: cart.couponCode,
+      address,
+      method: data.method,
+      expectedTotalPaise: data.expectedTotalPaise,
+      note: data.note,
+      deliveryInstructions: data.deliveryInstructions,
+    });
+    if (user && data.saveAddress && data.address) {
+      const count = await db.address.count({ where: { userId: user.id } });
+      if (count < 20) await db.address.create({ data: { ...data.address, userId: user.id, isDefault: count === 0 } });
+    }
+    if (guestToken) {
+      // Lets the same browser reopen the order without the emailed link.
+      (await cookies()).set(`dz_go_${order.number}`, guestToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
+      return { ok: true, url: `/order/${order.number}?placed=1` };
+    }
+    return { ok: true, url: `/account/orders/${order.number}?placed=1` };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Could not create your order." };
-  }
-
-  if (data.saveAddress && data.address) {
-    const count = await db.address.count({ where: { userId: user.id } });
-    await db.address.create({ data: { ...data.address, userId: user.id, isDefault: count === 0 } });
-  }
-
-  if (data.method === "COD") return { ok: true, orderNumber: order.number };
-
-  try {
-    const launch = await createRazorpayOrderFor(order.id);
-    return {
-      ok: true,
-      orderNumber: order.number,
-      razorpay: {
-        keyId: process.env.RAZORPAY_KEY_ID!,
-        razorpayOrderId: launch.razorpayOrderId,
-        amountPaise: launch.amountPaise,
-        orderNumber: order.number,
-        prefill: { name: order.customerName, email: order.email, contact: order.phone },
-      },
-    };
-  } catch (err) {
-    console.error("[razorpay:create-order]", err);
-    return { ok: false, error: "We couldn't start the payment. Your order is saved – you can retry payment from your account." };
+    if (err instanceof OrderError) {
+      const quote = await quoteFor({ pincode: address.pincode, state: address.state, method: data.method, email }, (await getCart()).couponCode);
+      return { ok: false, error: err.message, quote };
+    }
+    console.error("[checkout:create]", err);
+    return { ok: false, error: "We couldn't place your order right now. Nothing was charged – please try again." };
   }
 }
 
-export async function retryPaymentAction(orderNumber: string): Promise<PlaceOrderResult> {
+// ─────────────────────────── Order access (customer or guest link) ───────────────────────────
+
+/** Resolves an order the current visitor may act on: owner account, or a guest holding the order's secret. */
+export async function findAccessibleOrder(number: string, guestKey?: string | null) {
+  const n = String(number).slice(0, 40);
   const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Please sign in." };
-  if (!razorpayConfigured()) return { ok: false, error: "Online payment is awaiting Razorpay credentials." };
-  const order = await db.order.findFirst({ where: { number: orderNumber, userId: user.id }, include: { items: true } });
-  if (!order || !["PENDING", "FAILED"].includes(order.paymentStatus) || order.status === "CANCELLED") {
-    return { ok: false, error: "This order can't be paid." };
-  }
-  for (const item of order.items) {
-    if (!item.variantId) return { ok: false, error: `${item.productName} is no longer available.` };
-    const v = await db.productVariant.findUnique({ where: { id: item.variantId } });
-    if (!v || !v.isActive || v.stock < item.quantity) return { ok: false, error: `${item.productName} (${item.variantLabel}) is out of stock.` };
-  }
-  const launch = await createRazorpayOrderFor(order.id);
-  return {
-    ok: true,
-    orderNumber: order.number,
-    razorpay: {
-      keyId: process.env.RAZORPAY_KEY_ID!,
-      razorpayOrderId: launch.razorpayOrderId,
-      amountPaise: launch.amountPaise,
-      orderNumber: order.number,
-      prefill: { name: order.customerName, email: order.email, contact: order.phone },
-    },
-  };
+  const order = await db.order.findUnique({ where: { number: n } });
+  if (!order) return null;
+  if (user && order.userId === user.id) return order;
+  const key = guestKey || (await cookies()).get(`dz_go_${n}`)?.value;
+  if (key && order.guestAccessHash && order.guestAccessHash === hashGuestToken(key)) return order;
+  return null;
 }
 
-const verifySchema = z.object({
-  razorpay_order_id: z.string().min(5).max(64),
-  razorpay_payment_id: z.string().min(5).max(64),
-  razorpay_signature: z.string().min(10).max(256),
+export async function cancelOrderAction(orderNumber: string, reason: string, guestKey?: string): Promise<{ ok: boolean; message: string }> {
+  const order = await findAccessibleOrder(orderNumber, guestKey);
+  if (!order) return { ok: false, message: "Order not found." };
+  const why = String(reason || "").trim().slice(0, 300) || "No reason given";
+  try {
+    const user = await getCurrentUser();
+    const res = await customerCancel(order.id, user?.id ?? null, why);
+    return { ok: true, message: res === "cancelled" ? "Your order has been cancelled." : "Cancellation requested – we'll confirm shortly." };
+  } catch (err) {
+    return { ok: false, message: err instanceof OrderError ? err.message : "Could not cancel this order." };
+  }
+}
+
+const transferSchema = z.object({
+  reference: z.string().trim().min(4, "Enter the UTR / transaction reference").max(60).regex(/^[A-Za-z0-9\-/ ]+$/, "Letters, digits, dashes and slashes only"),
+  amount: z.coerce.number().positive("Enter the amount you paid").max(10_000_000),
+  paidOn: z.string().trim().optional(),
+  payerName: z.string().trim().max(80).optional(),
 });
 
-/** Never trusts the browser alone: verifies the signature AND fetches the payment from Razorpay. */
-export async function verifyPaymentAction(input: unknown): Promise<{ ok: boolean; orderNumber?: string; error?: string }> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Please sign in." };
-  const parsed = verifySchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid payment response." };
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = parsed.data;
+export type TransferState = { ok?: boolean; error?: string; fieldErrors?: Record<string, string> } | null;
 
-  const payment = await db.payment.findUnique({ where: { providerOrderId: razorpay_order_id }, include: { order: true } });
-  if (!payment || payment.order.userId !== user.id) return { ok: false, error: "Payment not found." };
-  if (!verifyCheckoutSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)) {
-    await db.payment.update({ where: { id: payment.id }, data: { errorDescription: "Signature verification failed" } });
-    return { ok: false, error: "Payment could not be verified. If money was deducted it will be reconciled automatically." };
+export async function submitTransferAction(_prev: TransferState, form: FormData): Promise<TransferState> {
+  const limited = await rateLimit("transfer", 10, 60 * 60_000);
+  if (!limited.ok) return { error: "Too many submissions – please try again later." };
+  const order = await findAccessibleOrder(String(form.get("orderNumber") ?? ""), String(form.get("k") ?? "") || null);
+  if (!order) return { error: "Order not found." };
+  const parsed = transferSchema.safeParse({
+    reference: form.get("reference"),
+    amount: form.get("amount"),
+    paidOn: form.get("paidOn") || undefined,
+    payerName: form.get("payerName") || undefined,
+  });
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const i of parsed.error.issues) fieldErrors[String(i.path[0])] ??= i.message;
+    return { error: "Please check the highlighted fields.", fieldErrors };
   }
-
+  let proofKey: string | null = null;
+  const file = form.get("proof");
+  if (file instanceof File && file.size > 0) {
+    if (file.size > MAX_UPLOAD_BYTES) return { error: "The screenshot is larger than 8 MB." };
+    try {
+      proofKey = (await uploadMedia(Buffer.from(await file.arrayBuffer()), "private/payment-proofs", { isPrivate: true })).key;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Could not upload the screenshot." };
+    }
+  }
+  const paidOn = parsed.data.paidOn ? new Date(parsed.data.paidOn) : null;
   try {
-    let rzp = await razorpay().payments.fetch(razorpay_payment_id);
-    if (rzp.order_id !== razorpay_order_id) return { ok: false, error: "Payment does not match this order." };
-    if (rzp.status === "authorized") rzp = await razorpay().payments.capture(razorpay_payment_id, Number(rzp.amount), "INR");
-    if (rzp.status !== "captured") return { ok: false, error: "Payment is not complete yet. We'll update your order as soon as it is confirmed." };
-    await markOrderPaid({
-      providerOrderId: razorpay_order_id,
-      providerPaymentId: razorpay_payment_id,
-      amountPaise: Number(rzp.amount),
-      method: rzp.method,
-      signatureVerified: true,
-      source: "checkout",
+    await submitBankTransfer(order.id, {
+      reference: parsed.data.reference.toUpperCase(),
+      amountPaise: toPaise(parsed.data.amount.toFixed(2)),
+      paidOn: paidOn && !Number.isNaN(paidOn.getTime()) ? paidOn : null,
+      payerName: parsed.data.payerName || null,
+      proofKey,
     });
-    return { ok: true, orderNumber: payment.order.number };
+    return { ok: true };
   } catch (err) {
-    console.error("[razorpay:verify]", err);
-    return { ok: false, error: "We couldn't confirm the payment right now. Your order will update automatically once Razorpay confirms it." };
+    return { error: err instanceof OrderError ? err.message : "Could not save your payment details – please try again." };
   }
-}
-
-/** Failure info from the browser is only used to show a failed state – it can never mark anything paid. */
-export async function reportPaymentFailureAction(providerOrderId: string, code?: string, description?: string) {
-  const user = await getCurrentUser();
-  if (!user) return;
-  const payment = await db.payment.findUnique({ where: { providerOrderId: String(providerOrderId).slice(0, 64) }, include: { order: true } });
-  if (!payment || payment.order.userId !== user.id) return;
-  await markPaymentFailed(payment.providerOrderId, code, description);
-}
-
-export async function cancelOrderAction(orderNumber: string): Promise<{ ok: boolean; message: string }> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, message: "Please sign in." };
-  const order = await db.order.findFirst({ where: { number: orderNumber, userId: user.id } });
-  if (!order) return { ok: false, message: "Order not found." };
-
-  if (order.status === "PENDING_PAYMENT" || order.status === "PAYMENT_FAILED") {
-    await setOrderStatus(order.id, "CANCELLED", "Cancelled by customer before payment", user.id);
-    return { ok: true, message: "Your order has been cancelled." };
-  }
-  if ((order.status === "CONFIRMED" || order.status === "PROCESSING") && order.paymentMethod === "COD") {
-    await setOrderStatus(order.id, "CANCELLED", "Cancelled by customer", user.id);
-    return { ok: true, message: "Your order has been cancelled." };
-  }
-  if (order.status === "CONFIRMED" || order.status === "PROCESSING") {
-    await db.$transaction([
-      db.order.update({ where: { id: order.id }, data: { status: "CANCEL_REQUESTED" } }),
-      db.orderStatusHistory.create({ data: { orderId: order.id, status: "CANCEL_REQUESTED", note: "Customer requested cancellation", byUserId: user.id } }),
-    ]);
-    return { ok: true, message: "Cancellation requested. We'll confirm and process your refund shortly." };
-  }
-  return { ok: false, message: "This order can no longer be cancelled." };
 }

@@ -1,70 +1,112 @@
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import { AdminHeader, Panel, Stat, Table } from "@/components/admin/ui";
+import { AdminHeader, Panel, Stat, Table, Tray } from "@/components/admin/ui";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadge";
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/auth/session";
+import { hasPermission, PERMISSIONS, type Permission } from "@/lib/permissions";
 import { formatINR, toPaise } from "@/lib/money";
-import { getSettings } from "@/lib/settings";
-import { razorpayConfigured, webhookConfigured } from "@/lib/razorpay";
+import { bankTransferReady, getSettings } from "@/lib/settings";
 import { storageMode } from "@/lib/storage";
 import { emailConfigured } from "@/lib/email";
 import { formatDate } from "@/lib/utils";
-import { monthlyRevenue } from "@/server/reports";
+import { dashboardMetrics, istDayStart, monthlyRevenue } from "@/server/reports";
 
-export default async function AdminDashboard() {
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const [months, ordersThisMonth, toFulfil, cancelRequests, onHold, customers, variants, needsReview, recent, settings] = await Promise.all([
-    monthlyRevenue(12),
-    db.order.count({ where: { createdAt: { gte: startOfMonth }, paymentStatus: { in: ["PAID", "NOT_REQUIRED", "PARTIALLY_REFUNDED"] } } }),
-    db.order.count({ where: { status: { in: ["CONFIRMED", "PROCESSING"] } } }),
-    db.order.count({ where: { status: "CANCEL_REQUESTED" } }),
-    db.order.count({ where: { status: "ON_HOLD" } }),
-    db.user.count({ where: { role: "CUSTOMER" } }),
-    db.productVariant.findMany({ where: { isActive: true, product: { isActive: true } }, select: { stock: true, lowStockThreshold: true } }),
-    db.product.count({ where: { needsReview: true } }),
-    db.order.findMany({ orderBy: { createdAt: "desc" }, take: 8 }),
+const RANGES = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 } as const;
+
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string; denied?: string }> }) {
+  const staff = await requirePermission("dashboard.view");
+  const sp = await searchParams;
+  const now = new Date();
+  const days = RANGES[(sp.range as keyof typeof RANGES) ?? "30d"] ?? 30;
+  const from = sp.from ? new Date(`${sp.from}T00:00:00+05:30`) : istDayStart(now, -(days - 1));
+  const to = sp.to ? new Date(new Date(`${sp.to}T00:00:00+05:30`).getTime() + 864e5) : now;
+  const financial = hasPermission(staff.permissions, "reports.financial");
+
+  const [m, months, settings, zones, needsReview] = await Promise.all([
+    dashboardMetrics({ from, to }),
+    financial ? monthlyRevenue(12) : Promise.resolve([]),
     getSettings(),
+    db.shippingZone.count({ where: { isActive: true } }),
+    db.product.count({ where: { needsReview: true } }),
   ]);
-  const thisMonth = months[months.length - 1];
-  const outOfStock = variants.filter((v) => v.stock <= 0).length;
-  const lowStock = variants.filter((v) => v.stock > 0 && v.stock <= v.lowStockThreshold).length;
 
   const setup = [
-    { ok: razorpayConfigured(), label: "Razorpay API keys", hint: process.env.VERCEL ? "Vercel → Project → Settings → Environment Variables: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET" : "Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your hosting environment" },
-    { ok: webhookConfigured(), label: "Razorpay webhook secret", hint: "Set RAZORPAY_WEBHOOK_SECRET and add the webhook in Razorpay" },
-    { ok: emailConfigured(), label: "Email (SMTP)", hint: "Needed for password resets and order emails" },
-    {
-      ok: storageMode() !== "local" || (!process.env.VERCEL && Boolean(process.env.UPLOAD_DIR)),
-      label: { blob: "Image storage: Vercel Blob", cloudinary: "Image storage: Cloudinary", local: "Image storage: local disk" }[storageMode()],
-      hint: process.env.VERCEL ? "Connect a Blob store in Vercel → Storage to enable image uploads" : "Mount a persistent volume at UPLOAD_DIR or add Cloudinary keys",
-    },
-    { ok: settings.commerce.shippingConfigured, label: "Shipping charges confirmed", hint: "Content & settings → Shipping" },
-    { ok: needsReview === 0, label: "Imported products reviewed", hint: `${needsReview} product(s) still flagged for review`, href: "/admin/products?review=1" },
-    { ok: outOfStock === 0, label: "Stock entered", hint: `${outOfStock} variant(s) at zero stock`, href: "/admin/inventory" },
+    { ok: bankTransferReady(settings) || settings.commerce.codEnabled, label: "A payment method is enabled", hint: "Settings → Payments: add bank details and enable bank transfer and/or COD", href: "/admin/settings" },
+    { ok: Boolean(settings.bank.accountNumber), label: "Bank account details", hint: "Needed for bank-transfer orders", href: "/admin/settings" },
+    { ok: emailConfigured(), label: "Email (SMTP)", hint: "Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, MAIL_FROM – until then emails are logged, not sent" },
+    { ok: storageMode() === "s3", label: `Image storage: ${storageMode() === "s3" ? "Coolify MinIO (S3)" : storageMode() === "blob" ? "Vercel Blob (fallback)" : storageMode()}`, hint: "Set the S3_* variables to move uploads to Coolify MinIO (see docs/ENVIRONMENT_SETUP.md)" },
+    { ok: zones > 0 || settings.commerce.shippingConfigured, label: "Shipping rates", hint: "Shipping → add zones / rates", href: "/admin/shipping" },
+    { ok: Boolean(settings.business.gstin) || false, label: "GSTIN for invoices", hint: "Settings → Business (leave empty if not GST-registered)", href: "/admin/settings" },
+    { ok: Boolean(settings.policies.returns && settings.policies.shipping && settings.policies.terms && settings.policies.privacy), label: "Store policies", hint: "Content → policies (privacy, terms, shipping, returns)", href: "/admin/content" },
+    { ok: needsReview === 0, label: "Imported products reviewed", hint: `${needsReview} product(s) flagged`, href: "/admin/products?review=1" },
+    { ok: m.outOfStock.length === 0, label: "Stock entered", hint: `${m.outOfStock.length} variant(s) at zero stock`, href: "/admin/inventory" },
   ];
+
+  const rangeLink = (r: string) => `/admin?range=${r}`;
+  const activeRange = sp.from || sp.to ? null : (sp.range ?? "30d");
 
   return (
     <>
-      <AdminHeader title="Dashboard" description="Sales, orders and store health at a glance." />
+      <AdminHeader
+        title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, ${staff.name.split(" ")[0]}`}
+        description="Live numbers from the store database."
+        actions={
+          <form className="flex flex-wrap items-center gap-2 text-[13px]" action="/admin">
+            {Object.keys(RANGES).map((r) => (
+              <Link key={r} href={rangeLink(r)} className={`rounded-full border px-3.5 py-1.5 ${activeRange === r ? "border-ink-900/10 bg-white font-medium shadow-sm" : "border-[#eceee9] text-ink-500"}`}>
+                {r.replace("d", " days").replace("365 days", "1 year")}
+              </Link>
+            ))}
+            <input type="date" name="from" defaultValue={sp.from} className="field-input w-auto py-1.5 text-[13px]" aria-label="From" />
+            <input type="date" name="to" defaultValue={sp.to} className="field-input w-auto py-1.5 text-[13px]" aria-label="To" />
+            <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
+          </form>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Net revenue this month" value={formatINR(thisMonth.net)} hint={`${thisMonth.orders} paid order(s)`} href="/admin/reports" />
-        <Stat label="Orders this month" value={ordersThisMonth} href="/admin/orders" />
-        <Stat label="To fulfil" value={toFulfil} hint="Confirmed / processing" href="/admin/orders?status=CONFIRMED" />
-        <Stat label="Needs attention" value={cancelRequests + onHold} hint={`${cancelRequests} cancel req · ${onHold} on hold`} tone={cancelRequests + onHold ? "warn" : undefined} href="/admin/orders?status=CANCEL_REQUESTED" />
-        <Stat label="Stock alerts" value={outOfStock + lowStock} hint={`${outOfStock} out · ${lowStock} low`} tone={outOfStock + lowStock ? "warn" : undefined} href="/admin/inventory" />
-        <Stat label="Customers" value={customers} href="/admin/customers" />
+      {sp.denied && (
+        <p className="mb-5 rounded-2xl bg-[#fbefd6] px-4 py-3 text-sm text-[#8a5a00]">
+          Your role can&apos;t open that page ({PERMISSIONS[sp.denied as Permission] ?? sp.denied}).
+        </p>
+      )}
+
+      {financial && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat label="Received today" value={formatINR(m.revenue.today.net)} hint="Verified payments − refunds" />
+          <Stat label="Last 7 days" value={formatINR(m.revenue.week.net)} />
+          <Stat label="Last 30 days" value={formatINR(m.revenue.month.net)} />
+          <Stat label="Selected range" value={formatINR(m.revenue.inRange.net)} hint={`${formatINR(m.revenue.inRange.refunded)} refunded`} href="/admin/reports" />
+        </div>
+      )}
+
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+        <Stat label="Orders" value={m.orders.total} href="/admin/orders" />
+        <Stat label="Awaiting payment" value={m.orders.pending} href="/admin/orders?tab=payment" />
+        <Stat label="Verify transfers" value={m.pendingTransfers} tone={m.pendingTransfers ? "warn" : undefined} href="/admin/payments" />
+        <Stat label="To fulfil" value={m.orders.confirmed + m.orders.processing} href="/admin/orders?tab=fulfil" />
+        <Stat label="In transit" value={m.orders.shipped} href="/admin/orders?tab=transit" />
+        <Stat label="Delivered" value={m.orders.delivered} />
+        <Stat label="Needs attention" value={m.orders.attention} tone={m.orders.attention ? "warn" : undefined} href="/admin/orders?tab=attention" />
+        <Stat label="Cancelled" value={m.orders.cancelled} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <Panel title="Monthly revenue">
-          <RevenueChart rows={months} />
-        </Panel>
-        <Panel title="Store setup">
+        {financial ? (
+          <Panel title="Monthly net revenue">
+            <RevenueChart rows={months} />
+          </Panel>
+        ) : (
+          <Panel title="Best sellers">
+            <BestSellers rows={m.best} />
+          </Panel>
+        )}
+        <Tray>
+          <h2 className="mb-4 text-[15px] font-semibold">Store setup</h2>
           <ul className="space-y-3 text-sm">
             {setup.map((s) => (
-              <li key={s.label} className="flex gap-3">
+              <li key={s.label} className="flex gap-3 rounded-2xl bg-white p-3">
                 {s.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-600" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-500" />}
                 <div>
                   <p className={s.ok ? "text-ink-700" : "font-medium"}>{s.label}</p>
@@ -73,16 +115,57 @@ export default async function AdminDashboard() {
               </li>
             ))}
           </ul>
+        </Tray>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <Panel title="Customers">
+          <p className="text-[28px] font-semibold tabular-nums">{m.customers.total}</p>
+          <p className="text-xs text-ink-500">{m.customers.new} new in range · {m.products} live products</p>
+        </Panel>
+        <Panel title="Payment methods (range)">
+          {m.methods.length ? (
+            <ul className="space-y-2 text-sm">
+              {m.methods.map((x) => (
+                <li key={x.method} className="flex justify-between">
+                  <span>{x.method === "COD" ? "Cash on delivery" : x.method === "BANK_TRANSFER" ? "Bank transfer" : "Online (legacy)"}</span>
+                  <span className="tabular-nums text-ink-700">{x.orders} · {financial ? formatINR(x.totalPaise) : ""}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-ink-500">No orders in this range.</p>
+          )}
+        </Panel>
+        <Panel title="Inventory alerts" actions={<Link href="/admin/inventory" className="text-sm text-green-600">Inventory</Link>}>
+          {m.outOfStock.length + m.lowStock.length === 0 ? (
+            <p className="text-sm text-ink-500">All variants are above their low-stock level.</p>
+          ) : (
+            <ul className="max-h-48 space-y-1.5 overflow-y-auto text-sm">
+              {[...m.outOfStock, ...m.lowStock].slice(0, 30).map((v) => (
+                <li key={v.id} className="flex justify-between gap-3">
+                  <span className="truncate">{v.product.name} · {v.label}</span>
+                  <span className={v.stock <= 0 ? "text-danger-600" : "text-warning-500"}>{v.stock <= 0 ? "Out" : `${v.stock} left`}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
       </div>
 
+      {financial && (
+        <div className="mt-6">
+          <Panel title="Best sellers (range)"><BestSellers rows={m.best} /></Panel>
+        </div>
+      )}
+
       <div className="mt-6">
         <Panel title="Recent orders" actions={<Link href="/admin/orders" className="text-sm text-green-600">View all</Link>}>
-          {recent.length ? (
+          {m.recent.length ? (
             <Table>
               <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Status</th><th>Payment</th><th className="text-right">Total</th></tr></thead>
               <tbody>
-                {recent.map((o) => (
+                {m.recent.map((o) => (
                   <tr key={o.id}>
                     <td><Link href={`/admin/orders/${o.id}`} className="font-medium text-green-600 hover:underline">{o.number}</Link></td>
                     <td className="text-ink-500">{formatDate(o.createdAt, true)}</td>
@@ -100,5 +183,20 @@ export default async function AdminDashboard() {
         </Panel>
       </div>
     </>
+  );
+}
+
+function BestSellers({ rows }: { rows: Array<{ name: string; variant: string; units: number }> }) {
+  if (!rows.length) return <p className="text-sm text-ink-500">No sales in this range.</p>;
+  const max = Math.max(...rows.map((r) => r.units));
+  return (
+    <ul className="space-y-3 text-sm">
+      {rows.map((r) => (
+        <li key={r.name + r.variant}>
+          <div className="flex justify-between"><span className="truncate">{r.name} · {r.variant}</span><span className="tabular-nums">{r.units}</span></div>
+          <div className="mt-1 h-1.5 rounded-full bg-[#f0f2ee]"><div className="h-full rounded-full bg-leaf-300" style={{ width: `${(r.units / max) * 100}%` }} /></div>
+        </li>
+      ))}
+    </ul>
   );
 }

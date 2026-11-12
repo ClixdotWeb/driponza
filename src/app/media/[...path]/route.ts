@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 /** Serves locally stored uploads (used when Cloudinary isn't configured). */
 export async function GET(_: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const parts = (await ctx.params).path;
+  // Private uploads are only served through the permission-checked /api/media/private route.
+  if (parts[0] === "private") return new Response("Not found", { status: 404 });
   const root = uploadDir();
   const full = path.resolve(/* turbopackIgnore: true */ root, ...parts);
   if (!full.startsWith(root + path.sep)) return new Response("Not found", { status: 404 });

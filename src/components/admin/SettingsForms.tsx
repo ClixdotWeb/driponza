@@ -71,18 +71,65 @@ export function ContactForm({ contact }: { contact: Settings["contact"] }) {
   );
 }
 
+const r = (p: number | null) => (p === null ? "" : (p / 100).toString());
+const Heading = ({ children }: { children: React.ReactNode }) => <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-ink-500 md:col-span-2">{children}</p>;
+
 export function CommerceForm({ commerce }: { commerce: Settings["commerce"] }) {
   const [state, action] = useActionState(saveSettingsAction, null);
   return (
     <ActionForm action={action} className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="section" value="commerce" />
       <div className="md:col-span-2"><FormMessage state={state} /></div>
-      {!commerce.shippingConfigured && <p className="rounded-xl bg-[#fbefd6] p-3 text-sm text-[#6b4700] md:col-span-2">Shipping charges haven&apos;t been confirmed yet — checkout currently charges ₹0 shipping. Set your rates and save.</p>}
-      <Input label="Flat shipping charge ₹" name="shippingFlat" inputMode="decimal" defaultValue={(commerce.shippingFlatPaise / 100).toString()} />
-      <Input label="Free shipping above ₹ (leave empty for never)" name="freeShippingAbove" inputMode="decimal" defaultValue={commerce.freeShippingAbovePaise !== null ? (commerce.freeShippingAbovePaise / 100).toString() : ""} />
+      <Heading>Payment methods</Heading>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="bankTransferEnabled" defaultChecked={commerce.bankTransferEnabled} className="accent-green-600" /> Accept bank transfer / UPI (needs bank details below)</label>
+      <Input label="Hold unpaid bank-transfer orders for (hours)" name="bankTransferHoldHours" inputMode="numeric" defaultValue={commerce.bankTransferHoldHours} />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="codEnabled" defaultChecked={commerce.codEnabled} className="accent-green-600" /> Offer cash on delivery</label>
+      <Input label="COD charge ₹ (used only when no shipping zones exist)" name="codCharge" inputMode="decimal" defaultValue={r(commerce.codChargePaise)} />
+      <Input label="COD only up to order value ₹ (empty = no limit)" name="codMaxOrder" inputMode="decimal" defaultValue={r(commerce.codMaxOrderPaise)} />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="whatsappOrdering" defaultChecked={commerce.whatsappOrdering} className="accent-green-600" /> Show “order on WhatsApp” option in cart</label>
-      <div className="md:col-span-2"><SubmitButton>Save shipping & payments</SubmitButton></div>
+      <Heading>Default shipping (used only if no shipping zones are set up)</Heading>
+      <Input label="Flat shipping charge ₹" name="shippingFlat" inputMode="decimal" defaultValue={r(commerce.shippingFlatPaise)} />
+      <Input label="Free shipping above ₹ (empty = never)" name="freeShippingAbove" inputMode="decimal" defaultValue={r(commerce.freeShippingAbovePaise)} />
+      <Heading>Order rules</Heading>
+      <Input label="Minimum order value ₹" name="minOrder" inputMode="decimal" defaultValue={r(commerce.minOrderPaise)} />
+      <Input label="Max quantity per item" name="maxQtyPerLine" inputMode="numeric" defaultValue={commerce.maxQtyPerLine} />
+      <Input label="Return window in days (empty = decide per request)" name="returnWindowDays" inputMode="numeric" defaultValue={commerce.returnWindowDays ?? ""} />
+      <div className="md:col-span-2"><SubmitButton>Save payments & order rules</SubmitButton></div>
+    </ActionForm>
+  );
+}
+
+export function BankForm({ bank }: { bank: Settings["bank"] }) {
+  const [state, action] = useActionState(saveSettingsAction, null);
+  return (
+    <ActionForm action={action} className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="section" value="bank" />
+      <div className="md:col-span-2"><FormMessage state={state} /></div>
+      <p className="rounded-xl bg-[#f4f5f2] p-3 text-xs text-ink-700 md:col-span-2">Shown only to a customer on their own unpaid bank-transfer order – never on public pages. Enter the details exactly as on your bank records.</p>
+      <Input label="Account holder name" name="accountName" defaultValue={bank.accountName} />
+      <Input label="Bank name" name="bankName" defaultValue={bank.bankName} />
+      <Input label="Account number" name="accountNumber" defaultValue={bank.accountNumber} autoComplete="off" />
+      <Input label="IFSC" name="ifsc" defaultValue={bank.ifsc} maxLength={11} />
+      <Input label="Branch" name="branch" defaultValue={bank.branch} />
+      <Input label="UPI ID (optional)" name="upiId" defaultValue={bank.upiId} />
+      <Area label="Extra instructions for customers (optional)" name="instructions" defaultValue={bank.instructions} className="md:col-span-2" />
+      <div className="md:col-span-2"><SubmitButton>Save bank details</SubmitButton></div>
+    </ActionForm>
+  );
+}
+
+export function BusinessForm({ business }: { business: Settings["business"] }) {
+  const [state, action] = useActionState(saveSettingsAction, null);
+  return (
+    <ActionForm action={action} className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="section" value="business" />
+      <div className="md:col-span-2"><FormMessage state={state} /></div>
+      <Input label="Legal / trade name (on invoices)" name="legalName" defaultValue={business.legalName} />
+      <Input label="GSTIN (leave empty if not registered)" name="gstin" defaultValue={business.gstin} maxLength={15} />
+      <Input label="Invoice number prefix" name="invoicePrefix" defaultValue={business.invoicePrefix} maxLength={12} />
+      <Input label="State of supply (CGST+SGST vs IGST)" name="stateOfSupply" defaultValue={business.stateOfSupply} />
+      <Area label="Invoice footer (optional)" name="invoiceFooter" defaultValue={business.invoiceFooter} className="md:col-span-2" />
+      <div className="md:col-span-2"><SubmitButton>Save business details</SubmitButton></div>
     </ActionForm>
   );
 }

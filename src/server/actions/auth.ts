@@ -8,6 +8,7 @@ import { createSession, destroySession, getCurrentUser } from "@/lib/auth/sessio
 import { hashToken, randomToken } from "@/lib/auth/tokens";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
+import { adminEmail, notify } from "@/server/notify";
 import { safeRedirect } from "@/lib/utils";
 import { mergeGuestCart } from "@/server/cart";
 
@@ -36,7 +37,9 @@ const registerSchema = z.object({
     .regex(/^(\+?91)?[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number")
     .or(z.literal("")),
   password,
-});
+  confirm: z.string(),
+  marketing: z.preprocess((v) => v === "on", z.boolean()).optional(),
+}).refine((d) => d.password === d.confirm, { message: "Passwords don't match", path: ["confirm"] });
 
 export async function registerAction(_: FormState, form: FormData): Promise<FormState> {
   const limited = await rateLimit("register", 5, 15 * 60_000);
@@ -48,8 +51,9 @@ export async function registerAction(_: FormState, form: FormData): Promise<Form
   const existing = await db.user.findUnique({ where: { email: parsed.data.email } });
   if (existing) return { fieldErrors: { email: "An account with this email already exists. Try signing in." }, values };
   const user = await db.user.create({
-    data: { name, email: parsed.data.email, phone: phone || null, passwordHash: await hashPassword(parsed.data.password) },
+    data: { name, email: parsed.data.email, phone: phone || null, passwordHash: await hashPassword(parsed.data.password), marketingOptIn: Boolean(parsed.data.marketing) },
   });
+  await sendVerificationEmail(user.id);
   await createSession(user.id);
   await mergeGuestCart(user.id);
   redirect(safeRedirect(form.get("next"), "/account"));
@@ -137,5 +141,72 @@ export async function changePasswordAction(_: FormState, form: FormData): Promis
   const user = await db.user.findUniqueOrThrow({ where: { id: me.id } });
   if (!(await verifyPassword(parsed.data.current, user.passwordHash))) return { fieldErrors: { current: "Current password is incorrect" } };
   await db.user.update({ where: { id: me.id }, data: { passwordHash: await hashPassword(parsed.data.password) } });
-  return { success: "Password updated." };
+  // Sign out every other device; keep this one signed in with a fresh session.
+  await db.session.deleteMany({ where: { userId: me.id } });
+  await createSession(me.id);
+  return { success: "Password updated. Other devices have been signed out." };
+}
+
+// ─────────── Email verification ───────────
+
+async function sendVerificationEmail(userId: string) {
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user || user.emailVerifiedAt) return;
+  const token = randomToken();
+  await db.emailVerificationToken.create({ data: { userId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 48 * 3600_000) } });
+  const link = `${process.env.APP_URL ?? ""}/verify-email?token=${token}`;
+  await notify({
+    to: user.email,
+    template: "customer.verify-email",
+    subject: "Confirm your email – Driponza",
+    body: `Hello ${user.name},
+
+Please confirm your email address (link valid for 48 hours):
+
+${link}
+
+— Driponza`,
+  });
+}
+
+export async function resendVerificationAction(): Promise<{ ok: boolean; message: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, message: "Please sign in." };
+  const limited = await rateLimit("verify-resend", 3, 60 * 60_000);
+  if (!limited.ok) return { ok: false, message: "Please wait before requesting another email." };
+  await sendVerificationEmail(me.id);
+  return { ok: true, message: "Verification email sent – check your inbox." };
+}
+
+/** Called by the /verify-email page. Single-use, expiring, hashed token. */
+export async function verifyEmailToken(token: string) {
+  if (!token || token.length > 200) return false;
+  const record = await db.emailVerificationToken.findUnique({ where: { tokenHash: hashToken(token) } });
+  if (!record || record.usedAt || record.expiresAt < new Date()) return false;
+  await db.$transaction([
+    db.user.update({ where: { id: record.userId }, data: { emailVerifiedAt: new Date() } }),
+    db.emailVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+  ]);
+  return true;
+}
+
+// ─────────── Account deletion & preferences ───────────
+
+export async function requestDeletionAction(_: FormState, form: FormData): Promise<FormState> {
+  const me = await getCurrentUser();
+  if (!me) return { error: "Please sign in." };
+  const user = await db.user.findUniqueOrThrow({ where: { id: me.id } });
+  if (!(await verifyPassword(String(form.get("password") ?? ""), user.passwordHash))) return { fieldErrors: { password: "Password is incorrect" } };
+  await db.user.update({ where: { id: me.id }, data: { deletionRequestedAt: new Date(), marketingOptIn: false } });
+  const admin = adminEmail();
+  if (admin) await notify({ to: admin, template: "admin.deletion-request", subject: "Account deletion request", body: `${user.email} asked for their account to be deleted.
+${process.env.APP_URL ?? ""}/admin/customers/${user.id}` });
+  return { success: "Request received. We'll delete your personal data (orders must be kept for tax records) and email you once done." };
+}
+
+export async function savePreferencesAction(_: FormState, form: FormData): Promise<FormState> {
+  const me = await getCurrentUser();
+  if (!me) return { error: "Please sign in." };
+  await db.user.update({ where: { id: me.id }, data: { marketingOptIn: form.get("marketing") === "on" } });
+  return { success: "Preferences saved." };
 }

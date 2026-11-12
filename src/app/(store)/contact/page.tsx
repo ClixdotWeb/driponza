@@ -3,11 +3,13 @@ import { Globe, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { PageHero } from "@/components/store/PageHero";
 import { Reveal } from "@/components/motion/Reveal";
 import { getSettings } from "@/lib/settings";
+import { getCurrentUser } from "@/lib/auth/session";
+import { ContactForm } from "@/components/store/CustomerForms";
 
 export const metadata: Metadata = { title: "Contact", description: "Get in touch with Driponza – Kozhikode, Kerala." };
 
 export default async function ContactPage() {
-  const { contact } = await getSettings();
+  const [{ contact }, user] = await Promise.all([getSettings(), getCurrentUser()]);
   const cards = [
     { icon: MessageCircle, title: "WhatsApp", body: "Questions or orders — message us anytime.", href: `https://wa.me/${contact.whatsapp}`, cta: "Chat on WhatsApp", external: true },
     { icon: Phone, title: "Phone", body: contact.phone, href: `tel:${contact.phone.replace(/\s/g, "")}`, cta: "Call us" },
@@ -41,6 +43,13 @@ export default async function ContactPage() {
             </a>
           ))}
         </Reveal>
+      </section>
+      <section className="container-x pb-20 md:pb-28" aria-labelledby="msg-title">
+        <div className="card mx-auto max-w-3xl p-6 md:p-10">
+          <h2 id="msg-title" className="display text-4xl">Send us a message</h2>
+          <p className="mt-2 text-sm text-ink-500">About an order? Add your order number so we can help faster.</p>
+          <div className="mt-6"><ContactForm defaults={{ name: user?.name, email: user?.email }} /></div>
+        </div>
       </section>
     </>
   );

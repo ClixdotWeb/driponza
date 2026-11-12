@@ -16,6 +16,11 @@ export type CartLine = {
   productSlug: string;
   name: string;
   variantLabel: string;
+  sku: string;
+  categoryId: string;
+  weightGrams: number | null;
+  taxRatePercent: number | null;
+  hsnCode: string | null;
   image: string | null;
   unitPricePaise: number;
   mrpPaise: number | null;
@@ -48,6 +53,9 @@ const cartInclude = {
               name: true,
               slug: true,
               isActive: true,
+              categoryId: true,
+              taxRatePercent: true,
+              hsnCode: true,
               category: { select: { isActive: true } },
               images: { take: 1, orderBy: { position: "asc" as const }, select: { url: true } },
             },
@@ -87,6 +95,11 @@ function toView(cart: CartRow | null): CartView {
       productSlug: p.slug,
       name: displayName(p.name),
       variantLabel: v.label,
+      sku: v.sku,
+      categoryId: p.categoryId,
+      weightGrams: v.weightGrams,
+      taxRatePercent: p.taxRatePercent === null ? null : Number(p.taxRatePercent),
+      hsnCode: p.hsnCode,
       image: p.images[0]?.url ?? null,
       unitPricePaise: unit,
       mrpPaise: v.mrp ? toPaise(v.mrp) : null,

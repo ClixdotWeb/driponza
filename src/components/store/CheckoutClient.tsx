@@ -1,21 +1,15 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { CreditCard, Lock, Truck, Wallet } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Landmark, Lock, Truck, Wallet } from "lucide-react";
 import { formatINR } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { CartView } from "@/server/cart";
-import type { Pricing } from "@/server/orders";
-import {
-  applyCouponAction,
-  placeOrderAction,
-  removeCouponAction,
-  reportPaymentFailureAction,
-  verifyPaymentAction,
-  type PlaceOrderResult,
-} from "@/server/actions/checkout";
+import type { Quote } from "@/server/orders";
+import { applyCouponAction, placeOrderAction, quoteAction, removeCouponAction, type QuoteInput } from "@/server/actions/checkout";
 
 type Address = {
   id: string;
@@ -32,82 +26,66 @@ type Address = {
   isDefault: boolean;
 };
 
-type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
-type RazorpayInstance = { open: () => void; on: (e: string, cb: (r: { error: { code: string; description: string; metadata?: { order_id?: string } } }) => void) => void };
-declare global {
-  interface Window {
-    Razorpay?: new (opts: Record<string, unknown>) => RazorpayInstance;
-  }
-}
-
-function loadRazorpay(): Promise<boolean> {
-  if (window.Razorpay) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
-  });
-}
-
-/** Opens Razorpay Checkout; success is only accepted after the server verifies it. Shared with the "retry payment" button. */
-export async function launchRazorpay(launch: NonNullable<Extract<PlaceOrderResult, { ok: true }>["razorpay"]>, onDone: (r: { ok: boolean; message?: string }) => void) {
-  if (!(await loadRazorpay()) || !window.Razorpay) return onDone({ ok: false, message: "Could not load the payment window. Check your connection and retry." });
-  const rzp = new window.Razorpay({
-    key: launch.keyId,
-    amount: launch.amountPaise,
-    currency: "INR",
-    name: "Driponza",
-    description: `Order ${launch.orderNumber}`,
-    order_id: launch.razorpayOrderId,
-    prefill: launch.prefill,
-    theme: { color: "#2E7D3A" },
-    handler: async (response: RazorpayResponse) => {
-      const result = await verifyPaymentAction(response);
-      onDone(result.ok ? { ok: true } : { ok: false, message: result.error });
-    },
-    modal: { ondismiss: () => onDone({ ok: false, message: "Payment was not completed. You can retry from your order page." }) },
-  });
-  rzp.on("payment.failed", (r) => {
-    reportPaymentFailureAction(launch.razorpayOrderId, r.error.code, r.error.description);
-  });
-  rzp.open();
-}
-
+type Method = "BANK_TRANSFER" | "COD";
 const blankAddress = { label: "", fullName: "", phone: "", line1: "", line2: "", landmark: "", city: "", district: "", state: "Kerala", pincode: "" };
 
 export function CheckoutClient(props: {
-  user: { name: string; email: string; phone: string | null };
+  user: { name: string; email: string; phone: string | null } | null;
   cart: CartView;
-  initialPricing: Pricing;
+  initialQuote: Quote;
   initialCoupon: string | null;
   addresses: Address[];
   states: string[];
-  codEnabled: boolean;
-  razorpayReady: boolean;
   whatsapp: string;
 }) {
   const router = useRouter();
   const [addressId, setAddressId] = useState<string | "new">(props.addresses[0]?.id ?? "new");
-  const [address, setAddress] = useState({ ...blankAddress, fullName: props.user.name, phone: props.user.phone ?? "" });
+  const [address, setAddress] = useState({ ...blankAddress, fullName: props.user?.name ?? "", phone: props.user?.phone ?? "" });
+  const [email, setEmail] = useState(props.user?.email ?? "");
   const [saveAddress, setSaveAddress] = useState(true);
-  const [method, setMethod] = useState<"RAZORPAY" | "COD">(props.razorpayReady || !props.codEnabled ? "RAZORPAY" : "COD");
+  const initialMethod: Method = props.initialQuote.methods.BANK_TRANSFER.available || !props.initialQuote.methods.COD.available ? "BANK_TRANSFER" : "COD";
+  const [method, setMethod] = useState<Method>(initialMethod);
+  const [instructions, setInstructions] = useState("");
   const [note, setNote] = useState("");
-  const [pricing, setPricing] = useState(props.initialPricing);
+  const [terms, setTerms] = useState(false);
+  const [quote, setQuote] = useState(props.initialQuote);
   const [coupon, setCoupon] = useState(props.initialCoupon ?? "");
   const [appliedCoupon, setAppliedCoupon] = useState(props.initialCoupon);
   const [couponMsg, setCouponMsg] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [quoting, startQuote] = useTransition();
+  const submitted = useRef(false);
+
+  const selected = addressId === "new" ? null : props.addresses.find((a) => a.id === addressId) ?? null;
+  const pincode = selected?.pincode ?? address.pincode;
+  const state = selected?.state ?? address.state;
+  const quoteInput: QuoteInput = { pincode, state, method, email };
+  const pinValid = /^[1-9]\d{5}$/.test(pincode);
+
+  // Re-price on the server whenever the delivery PIN/state or payment method changes.
+  useEffect(() => {
+    if (!pinValid) return;
+    const t = setTimeout(() => startQuote(async () => setQuote(await quoteAction({ pincode, state, method, email }))), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pincode, state, method, pinValid]);
+
+  // If the chosen method becomes unavailable (e.g. COD not allowed for this PIN), switch to the other.
+  useEffect(() => {
+    if (!quote.methods[method].available) {
+      const other: Method = method === "COD" ? "BANK_TRANSFER" : "COD";
+      if (quote.methods[other].available) setMethod(other);
+    }
+  }, [quote, method]);
 
   const set = (k: keyof typeof blankAddress) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setAddress((a) => ({ ...a, [k]: e.target.value }));
 
   async function applyCoupon() {
     setCouponMsg(null);
-    const res = await applyCouponAction(coupon);
-    if (res.pricing) setPricing(res.pricing);
+    const res = await applyCouponAction(coupon, quoteInput);
+    setQuote(res.quote);
     if (res.ok) {
       setAppliedCoupon(coupon.trim().toUpperCase());
       setCouponMsg("Coupon applied");
@@ -117,38 +95,37 @@ export function CheckoutClient(props: {
     }
   }
 
+  const anyMethod = quote.methods.BANK_TRANSFER.available || quote.methods.COD.available;
+  const canSubmit = !busy && !quoting && anyMethod && quote.methods[method].available && quote.serviceable && pinValid && terms;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitted.current || !canSubmit) return; // guards double clicks before the server guard
+    submitted.current = true;
     setBusy(true);
     setError(null);
     setErrors({});
     const res = await placeOrderAction({
+      contact: props.user ? undefined : { email },
       addressId: addressId === "new" ? undefined : addressId,
       address: addressId === "new" ? address : undefined,
-      saveAddress: addressId === "new" && saveAddress,
+      saveAddress: Boolean(props.user) && addressId === "new" && saveAddress,
       method,
-      couponCode: appliedCoupon ?? undefined,
+      expectedTotalPaise: quote.totals.totalPaise,
+      deliveryInstructions: instructions || undefined,
       note: note || undefined,
+      acceptTerms: terms,
     });
     if (!res.ok) {
+      submitted.current = false;
       setBusy(false);
       setError(res.error);
       setErrors(res.fieldErrors ?? {});
+      if (res.quote) setQuote(res.quote);
       return;
     }
-    // Layouts aren't re-fetched on client navigation, so refresh to update the header cart count.
-    const go = (url: string) => {
-      router.push(url);
-      router.refresh();
-    };
-    if (!res.razorpay) {
-      go(`/account/orders/${res.orderNumber}?placed=1`);
-      return;
-    }
-    await launchRazorpay(res.razorpay, (r) => {
-      if (r.ok) go(`/account/orders/${res.orderNumber}?placed=1`);
-      else go(`/account/orders/${res.orderNumber}?payment=${encodeURIComponent(r.message ?? "incomplete")}`);
-    });
+    router.push(res.url);
+    router.refresh(); // updates the header cart count
   }
 
   const step = (n: number, title: string, icon?: React.ReactNode) => (
@@ -158,16 +135,41 @@ export function CheckoutClient(props: {
     </h2>
   );
 
+  const methodCard = (m: Method, title: string, icon: React.ReactNode, desc: string) => {
+    const info = quote.methods[m];
+    return (
+      <label className={cn("flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition", method === m ? "border-green-600 bg-botanical-100/60" : "border-cream-200", !info.available && "cursor-not-allowed opacity-60")}>
+        <input type="radio" name="method" disabled={!info.available} checked={method === m} onChange={() => setMethod(m)} className="mt-1 accent-green-600" />
+        <span className="text-sm">
+          <span className="flex items-center gap-2 font-medium">{icon} {title}</span>
+          <span className="mt-1 block text-ink-500">{info.available ? desc : info.reason}</span>
+        </span>
+      </label>
+    );
+  };
+
+  const t = quote.totals;
   return (
     <form onSubmit={submit} className="mt-10 grid gap-10 lg:grid-cols-[1fr_400px]" noValidate>
       <div className="grid gap-6">
         {/* 1 · Contact */}
         <section className="card p-6">
           {step(1, "Contact")}
-          <p className="mt-4 text-sm text-ink-700">
-            {props.user.name} · {props.user.email}
-          </p>
-          <p className="mt-1 text-xs text-ink-500">Order updates are sent to this email.</p>
+          {props.user ? (
+            <>
+              <p className="mt-4 text-sm text-ink-700">{props.user.name} · {props.user.email}</p>
+              <p className="mt-1 text-xs text-ink-500">Order updates are sent to this email.</p>
+            </>
+          ) : (
+            <div className="mt-4">
+              <label htmlFor="co-email" className="field-label">Email for order updates</label>
+              <input id="co-email" type="email" autoComplete="email" className="field-input" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={errors.email ? true : undefined} required />
+              {errors.email && <p className="field-error">{errors.email}</p>}
+              <p className="mt-2 text-xs text-ink-500">
+                Checking out as a guest. <Link href="/login?next=/checkout" className="text-green-600 underline">Sign in</Link> to use saved addresses.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* 2 · Delivery address */}
@@ -179,9 +181,7 @@ export function CheckoutClient(props: {
                 <input type="radio" name="addressId" checked={addressId === a.id} onChange={() => setAddressId(a.id)} className="mt-1 accent-green-600" />
                 <span className="text-sm">
                   <span className="font-medium">{a.fullName}</span> {a.label && <span className="ml-1 rounded-full bg-cream-100 px-2 py-0.5 text-[11px]">{a.label}</span>}
-                  <span className="mt-1 block text-ink-700">
-                    {[a.line1, a.line2, a.landmark, a.city, a.district, a.state].filter(Boolean).join(", ")} – {a.pincode}
-                  </span>
+                  <span className="mt-1 block text-ink-700">{[a.line1, a.line2, a.landmark, a.city, a.district, a.state].filter(Boolean).join(", ")} – {a.pincode}</span>
                   <span className="block text-ink-500">{a.phone}</span>
                 </span>
               </label>
@@ -209,7 +209,16 @@ export function CheckoutClient(props: {
               ).map(([k, label, ac]) => (
                 <div key={k} className={k === "line1" ? "sm:col-span-2" : ""}>
                   <label htmlFor={`addr-${k}`} className="field-label">{label}</label>
-                  <input id={`addr-${k}`} className="field-input" autoComplete={ac} inputMode={k === "phone" || k === "pincode" ? "numeric" : undefined} value={address[k]} onChange={set(k)} aria-invalid={errors[k] ? true : undefined} />
+                  <input
+                    id={`addr-${k}`}
+                    className="field-input"
+                    autoComplete={ac}
+                    inputMode={k === "phone" || k === "pincode" ? "numeric" : undefined}
+                    maxLength={k === "pincode" ? 6 : undefined}
+                    value={address[k]}
+                    onChange={set(k)}
+                    aria-invalid={errors[k] ? true : undefined}
+                  />
                   {errors[k] && <p className="field-error">{errors[k]}</p>}
                 </div>
               ))}
@@ -219,9 +228,11 @@ export function CheckoutClient(props: {
                   {props.states.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
-              <label className="flex items-center gap-2 self-end pb-3 text-sm">
-                <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="accent-green-600" /> Save to my addresses
-              </label>
+              {props.user && (
+                <label className="flex items-center gap-2 self-end pb-3 text-sm">
+                  <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="accent-green-600" /> Save to my addresses
+                </label>
+              )}
             </div>
           )}
         </section>
@@ -229,36 +240,40 @@ export function CheckoutClient(props: {
         {/* 3 · Shipping */}
         <section className="card p-6">
           {step(3, "Shipping", <Truck className="size-4 text-green-600" />)}
-          <p className="mt-4 text-sm text-ink-700">
-            Standard delivery · <span className="font-medium">{pricing.shippingPaise === 0 ? "No shipping charge" : formatINR(pricing.shippingPaise)}</span>
-          </p>
-          <label htmlFor="note" className="field-label mt-5">Order note (optional)</label>
-          <input id="note" className="field-input" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Any delivery instructions?" />
+          <div className="mt-4 text-sm text-ink-700" aria-live="polite">
+            {!pinValid ? (
+              <p className="text-ink-500">Enter a 6-digit PIN code to see delivery options.</p>
+            ) : !quote.serviceable ? (
+              <p className="rounded-xl bg-danger-600/10 p-3 text-danger-600">Sorry, we don&apos;t deliver to {pincode} yet. <a className="underline" href={`https://wa.me/${props.whatsapp}`} target="_blank" rel="noopener noreferrer">Ask us on WhatsApp</a>.</p>
+            ) : (
+              <p>
+                {quote.zone?.name ?? "Standard delivery"}
+                {quote.zone && <> · {quote.zone.minDays}–{quote.zone.maxDays} days</>} ·{" "}
+                <span className="font-medium">{t.shippingPaise === 0 ? "Free" : formatINR(t.shippingPaise)}</span>
+                {quoting && <span className="ml-2 text-ink-500">updating…</span>}
+              </p>
+            )}
+          </div>
+          <label htmlFor="instr" className="field-label mt-5">Delivery instructions (optional)</label>
+          <input id="instr" className="field-input" maxLength={300} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="e.g. Call before delivery, leave with security" />
+          <label htmlFor="note" className="field-label mt-4">Order note (optional)</label>
+          <input id="note" className="field-input" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         </section>
 
         {/* 4 · Payment */}
         <section className="card p-6">
           {step(4, "Payment")}
           <div className="mt-5 grid gap-3">
-            <label className={cn("flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition", method === "RAZORPAY" ? "border-green-600 bg-botanical-100/60" : "border-cream-200", !props.razorpayReady && "opacity-60")}>
-              <input type="radio" name="method" disabled={!props.razorpayReady} checked={method === "RAZORPAY"} onChange={() => setMethod("RAZORPAY")} className="mt-1 accent-green-600" />
-              <span className="text-sm">
-                <span className="flex items-center gap-2 font-medium"><CreditCard className="size-4" /> Pay online — UPI, cards, net banking, wallets</span>
-                <span className="mt-1 block text-ink-500">{props.razorpayReady ? "Secured by Razorpay." : "Online payment is being set up (awaiting Razorpay credentials)."}</span>
-              </span>
-            </label>
-            {props.codEnabled && (
-              <label className={cn("flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition", method === "COD" ? "border-green-600 bg-botanical-100/60" : "border-cream-200")}>
-                <input type="radio" name="method" checked={method === "COD"} onChange={() => setMethod("COD")} className="mt-1 accent-green-600" />
-                <span className="text-sm">
-                  <span className="flex items-center gap-2 font-medium"><Wallet className="size-4" /> Cash on delivery</span>
-                  <span className="mt-1 block text-ink-500">Pay when your order arrives.</span>
-                </span>
-              </label>
+            {methodCard("BANK_TRANSFER", "Bank transfer / UPI", <Landmark className="size-4" />, "Pay to our bank account after placing the order, then submit your transaction reference. We confirm once it reaches our account.")}
+            {methodCard(
+              "COD",
+              "Cash on delivery",
+              <Wallet className="size-4" />,
+              quote.totals.codChargePaise > 0 ? `Pay when your order arrives (${formatINR(quote.totals.codChargePaise)} COD charge).` : "Pay when your order arrives.",
             )}
-            {!props.razorpayReady && !props.codEnabled && (
+            {!anyMethod && (
               <p className="rounded-xl bg-cream-100 p-4 text-sm text-ink-700">
-                Online checkout opens soon. Meanwhile you can{" "}
+                Online ordering opens soon. Meanwhile you can{" "}
                 <a className="text-green-600 underline" href={`https://wa.me/${props.whatsapp}`} target="_blank" rel="noopener noreferrer">order on WhatsApp</a>.
               </p>
             )}
@@ -293,7 +308,7 @@ export function CheckoutClient(props: {
               type="button"
               className="btn btn-outline btn-sm text-forest-800"
               onClick={async () => {
-                setPricing(await removeCouponAction());
+                setQuote(await removeCouponAction(quoteInput));
                 setAppliedCoupon(null);
                 setCoupon("");
                 setCouponMsg(null);
@@ -302,28 +317,39 @@ export function CheckoutClient(props: {
               Remove
             </button>
           ) : (
-            <button type="button" className="btn btn-outline btn-sm text-forest-800" onClick={applyCoupon} disabled={!coupon.trim()}>
-              Apply
-            </button>
+            <button type="button" className="btn btn-outline btn-sm text-forest-800" onClick={applyCoupon} disabled={!coupon.trim()}>Apply</button>
           )}
         </div>
         {couponMsg && <p className={cn("mt-2 text-xs", appliedCoupon ? "text-green-600" : "text-danger-600")}>{couponMsg}</p>}
 
         <dl className="mt-5 space-y-2.5 border-t border-cream-200 pt-5 text-sm">
-          <div className="flex justify-between"><dt className="text-ink-700">Subtotal</dt><dd className="tabular-nums">{formatINR(pricing.subtotalPaise)}</dd></div>
-          {pricing.discountPaise > 0 && (
-            <div className="flex justify-between text-green-600"><dt>Discount {pricing.coupon && `(${pricing.coupon.code})`}</dt><dd className="tabular-nums">−{formatINR(pricing.discountPaise)}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-700">Subtotal</dt><dd className="tabular-nums">{formatINR(t.subtotalPaise)}</dd></div>
+          {t.discountPaise > 0 && (
+            <div className="flex justify-between text-green-600"><dt>Discount {quote.coupon && `(${quote.coupon.code})`}</dt><dd className="tabular-nums">−{formatINR(t.discountPaise)}</dd></div>
           )}
-          <div className="flex justify-between"><dt className="text-ink-700">Shipping</dt><dd className="tabular-nums">{pricing.shippingPaise ? formatINR(pricing.shippingPaise) : "₹0"}</dd></div>
-          <div className="flex items-baseline justify-between border-t border-cream-200 pt-3"><dt className="font-medium">Total</dt><dd className="display text-3xl tabular-nums">{formatINR(pricing.totalPaise)}</dd></div>
+          <div className="flex justify-between"><dt className="text-ink-700">Shipping</dt><dd className="tabular-nums">{pinValid ? (t.shippingPaise ? formatINR(t.shippingPaise) : "Free") : "—"}</dd></div>
+          {t.codChargePaise > 0 && <div className="flex justify-between"><dt className="text-ink-700">COD charge</dt><dd className="tabular-nums">{formatINR(t.codChargePaise)}</dd></div>}
+          <div className="flex items-baseline justify-between border-t border-cream-200 pt-3"><dt className="font-medium">Total</dt><dd className="display text-3xl tabular-nums">{formatINR(t.totalPaise)}</dd></div>
+          {t.taxPaise > 0 && <p className="text-right text-xs text-ink-500">Includes {formatINR(t.taxPaise)} GST</p>}
         </dl>
 
+        <label className="mt-5 flex items-start gap-2 text-xs text-ink-700">
+          <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-0.5 accent-green-600" />
+          <span>
+            I agree to the <Link href="/policies/terms" className="underline">terms</Link>, <Link href="/policies/shipping" className="underline">shipping</Link> and{" "}
+            <Link href="/policies/returns" className="underline">return policy</Link>.
+          </span>
+        </label>
+        {errors.acceptTerms && <p className="field-error">{errors.acceptTerms}</p>}
+
         {error && <p role="alert" className="mt-4 rounded-xl bg-danger-600/10 p-3 text-sm text-danger-600">{error}</p>}
-        <button type="submit" disabled={busy || (!props.razorpayReady && method === "RAZORPAY")} className="btn btn-primary mt-5 w-full py-4 text-[15px]">
+        <button type="submit" disabled={!canSubmit} className="btn btn-primary mt-5 w-full py-4 text-[15px]">
           <Lock className="size-4" />
-          {busy ? "Processing…" : method === "COD" ? "Place order" : `Pay ${formatINR(pricing.totalPaise)}`}
+          {busy ? "Placing order…" : `Place order · ${formatINR(t.totalPaise)}`}
         </button>
-        <p className="mt-3 text-center text-xs text-ink-500">By placing your order you agree to our terms and policies.</p>
+        <p className="mt-3 text-center text-xs text-ink-500">
+          {method === "BANK_TRANSFER" ? "You'll see our bank details on the next page. Your order is confirmed once payment is verified." : "Pay in cash when your order is delivered."}
+        </p>
       </aside>
     </form>
   );

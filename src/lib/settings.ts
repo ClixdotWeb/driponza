@@ -33,11 +33,40 @@ export const contentSchema = z.object({
 });
 
 export const commerceSchema = z.object({
+  /** Used only when no shipping zones exist (acts as an "all India" zone). */
   shippingFlatPaise: z.number().int().min(0).max(1_000_000),
   freeShippingAbovePaise: z.number().int().min(0).max(100_000_000).nullable(),
   codEnabled: z.boolean(),
+  codChargePaise: z.number().int().min(0).max(100_000),
+  codMaxOrderPaise: z.number().int().min(0).max(100_000_000).nullable(),
+  bankTransferEnabled: z.boolean(),
+  /** Unpaid bank-transfer orders are cancelled and stock released after this many hours. */
+  bankTransferHoldHours: z.number().int().min(1).max(24 * 14),
+  minOrderPaise: z.number().int().min(0).max(100_000_000),
+  maxQtyPerLine: z.number().int().min(1).max(500),
+  /** Days after delivery a customer may request a return. Null = no automatic limit (staff decide per request). */
+  returnWindowDays: z.number().int().min(0).max(365).nullable(),
   whatsappOrdering: z.boolean(),
   shippingConfigured: z.boolean(),
+});
+
+/** Shown only to a customer on their own unpaid bank-transfer order (never in public pages). */
+export const bankSchema = z.object({
+  accountName: z.string().max(120),
+  bankName: z.string().max(120),
+  accountNumber: z.string().max(34),
+  ifsc: z.string().max(11),
+  branch: z.string().max(120),
+  upiId: z.string().max(80),
+  instructions: z.string().max(2000),
+});
+
+export const businessSchema = z.object({
+  legalName: z.string().max(160),
+  gstin: z.string().max(15),
+  invoicePrefix: z.string().regex(/^[A-Z0-9-]{0,12}$/, "Capital letters, digits and dashes only"),
+  invoiceFooter: z.string().max(500),
+  stateOfSupply: z.string().max(60),
 });
 
 export const policiesSchema = z.object({
@@ -79,13 +108,35 @@ export const DEFAULTS = {
     shippingFlatPaise: 0,
     freeShippingAbovePaise: null as number | null,
     codEnabled: false,
+    codChargePaise: 0,
+    codMaxOrderPaise: null as number | null,
+    bankTransferEnabled: false,
+    bankTransferHoldHours: 48,
+    minOrderPaise: 0,
+    maxQtyPerLine: 20,
+    returnWindowDays: null as number | null, // AWAITING BUSINESS RETURN POLICY
     whatsappOrdering: true,
     shippingConfigured: false,
   },
   policies: { privacy: "", terms: "", shipping: "", returns: "" },
+  // AWAITING BUSINESS DETAILS – nothing here is invented; the owner fills these in Admin → Settings.
+  bank: { accountName: "", bankName: "", accountNumber: "", ifsc: "", branch: "", upiId: "", instructions: "" },
+  business: { legalName: "Driponza", gstin: "", invoicePrefix: "DZ", invoiceFooter: "", stateOfSupply: "Kerala" },
 };
 
-const schemas = { contact: contactSchema, content: contentSchema, commerce: commerceSchema, policies: policiesSchema };
+const schemas = {
+  contact: contactSchema,
+  content: contentSchema,
+  commerce: commerceSchema,
+  policies: policiesSchema,
+  bank: bankSchema,
+  business: businessSchema,
+};
+
+/** Bank transfer can be offered only when enabled AND the account details are filled in. */
+export function bankTransferReady(s: Settings) {
+  return s.commerce.bankTransferEnabled && Boolean(s.bank.accountName && s.bank.accountNumber && s.bank.ifsc);
+}
 export type SettingKey = keyof typeof schemas;
 export type Settings = { [K in SettingKey]: z.infer<(typeof schemas)[K]> };
 
