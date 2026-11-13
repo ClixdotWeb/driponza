@@ -6,7 +6,15 @@ import { retryNotifications } from "@/server/notify";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Hourly maintenance. Vercel Cron sends "Authorization: Bearer $CRON_SECRET"; Coolify uses the same header via curl. */
+/**
+ * Scheduled maintenance. Vercel Cron sends "Authorization: Bearer $CRON_SECRET";
+ * Coolify uses the same header via curl.
+ *
+ * Vercel's Hobby plan allows one cron run per day, so vercel.json schedules this
+ * daily. Between runs, expired unpaid orders are also swept opportunistically:
+ * before a checkout is quoted (so stale reservations can't block a real sale) and
+ * after each admin page responds. On a plan that allows it, "30 * * * *" is better.
+ */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";

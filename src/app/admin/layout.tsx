@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import Link from "next/link";
 import Image from "next/image";
 import { Bell, ExternalLink, LogOut, Settings, Store } from "lucide-react";
@@ -11,6 +12,7 @@ import { db } from "@/lib/db";
 import { requireStaff } from "@/lib/auth/session";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import { logoutAction } from "@/server/actions/auth";
+import { maybeExpireUnpaidOrders } from "@/server/orders";
 
 export const metadata: Metadata = { title: { default: "Admin", template: "%s · Driponza Admin" }, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -18,8 +20,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Server-side staff check on every admin request (the proxy only checks that a cookie exists).
   const staff = await requireStaff();
-  // Expiring unpaid orders is the hourly cron's job (/api/cron/expire-orders).
-  // It used to run here too, delaying every admin page render by a database sweep.
+  // Free stock held by expired unpaid orders. This runs AFTER the response is sent,
+  // so it never delays a page render – it used to be awaited before it.
+  after(() => maybeExpireUnpaidOrders());
   const allowed = NAV.filter((i) => hasPermission(staff.permissions, i.perm as Permission)).map((i) => i.href);
   const canVerify = hasPermission(staff.permissions, "payments.verify");
   const pending = canVerify ? await db.bankTransferSubmission.count({ where: { status: "SUBMITTED" } }) : 0;
