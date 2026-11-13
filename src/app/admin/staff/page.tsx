@@ -1,6 +1,7 @@
 import { AdminHeader, Panel, Table } from "@/components/admin/ui";
 import { InviteStaffForm, RoleCard, RoleForm } from "@/components/admin/StoreForms";
 import { StaffRoleSelect } from "@/components/admin/CustomerActions";
+import { StaffPasswordButton } from "@/components/admin/StaffPasswordButton";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -25,7 +26,7 @@ export default async function StaffPage() {
       <AdminHeader title="Staff & roles" description="Permissions are checked on the server for every page and action. Role changes sign the person out so they apply immediately." />
       <Panel title="Staff" className="mb-6" actions={<InviteStaffForm roles={roleOptions} />}>
         <Table>
-          <thead><tr><th>Name</th><th>Last login</th><th>Status</th><th>Role</th></tr></thead>
+          <thead><tr><th>Name</th><th>Last login</th><th>Status</th><th>Role</th><th className="text-right">Password</th></tr></thead>
           <tbody>
             {staff.map((s) => (
               <tr key={s.id}>
@@ -33,6 +34,7 @@ export default async function StaffPage() {
                 <td className="text-ink-500">{s.lastLoginAt ? formatDate(s.lastLoginAt, true) : "—"}</td>
                 <td className="text-xs">{s.isActive ? "Active" : "Suspended"}</td>
                 <td>{s.id === me.id ? <span className="text-xs text-ink-500">{roles.find((r) => r.id === s.staffRoleId)?.name ?? "—"} (you)</span> : <StaffRoleSelect userId={s.id} current={s.staffRoleId} roles={roleOptions} />}</td>
+                <td className="text-right"><StaffPasswordButton userId={s.id} name={s.name} email={s.email} isSelf={s.id === me.id} /></td>
               </tr>
             ))}
           </tbody>

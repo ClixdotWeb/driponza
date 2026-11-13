@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { assertPermission, ForbiddenError } from "@/lib/auth/session";
+import { assertPermission, createSession, ForbiddenError } from "@/lib/auth/session";
+import { hashPassword } from "@/lib/auth/password";
 import { ALL_PERMISSIONS } from "@/lib/permissions";
 import { toPaise } from "@/lib/money";
 import { audit } from "@/server/audit";
@@ -156,6 +157,40 @@ export async function inviteStaffAction(_: FormState, form: FormData): Promise<F
     await audit({ actorId: staff.id, action: "staff.add", entity: "User", entityId: user.id, summary: `${email} added as ${role.name}` });
     revalidatePath("/admin/staff");
     return { success: `${user.name} is now ${role.name}.` };
+  });
+}
+
+/**
+ * Sets a staff member's password. Passwords are stored hashed and cannot be read
+ * back, so when one is forgotten the only remedy is to set a new one. Restricted to
+ * staff.manage (Super Admin by default), recorded in the audit log, and it signs the
+ * account out everywhere so an old session can't outlive the change.
+ */
+export async function setStaffPasswordAction(_: FormState, form: FormData): Promise<FormState> {
+  return guard(async () => {
+    const actor = await assertPermission("staff.manage");
+    const parsed = z
+      .object({
+        userId: z.string().cuid(),
+        password: z.string().min(10, "Use at least 10 characters").max(200),
+        confirm: z.string(),
+      })
+      .refine((v) => v.password === v.confirm, { message: "The two passwords don't match", path: ["confirm"] })
+      .safeParse(Object.fromEntries(form));
+    if (!parsed.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const i of parsed.error.issues) fieldErrors[String(i.path[0])] ??= i.message;
+      return { fieldErrors };
+    }
+    const target = await db.user.findUnique({ where: { id: parsed.data.userId }, select: { id: true, name: true, email: true, role: true } });
+    if (!target || target.role !== "ADMIN") return { error: "Staff account not found." };
+
+    await db.user.update({ where: { id: target.id }, data: { passwordHash: await hashPassword(parsed.data.password) } });
+    await db.session.deleteMany({ where: { userId: target.id } });
+    if (target.id === actor.id) await createSession(actor.id); // keep the person who did it signed in
+    await audit({ actorId: actor.id, action: "staff.password-set", entity: "User", entityId: target.id, summary: `Password set for ${target.email}` });
+    revalidatePath("/admin/staff");
+    return { success: `New password set for ${target.name}. They have been signed out of other devices.` };
   });
 }
 
