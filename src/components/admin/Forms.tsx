@@ -2,9 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/ui/Form";
-import { cn } from "@/lib/utils";
 import type { FormState } from "@/server/actions/auth";
 import {
   adjustStockAction,
@@ -65,41 +64,21 @@ function DeleteCategory({ id, count }: { id: string; count: number }) {
   );
 }
 
-const ADJUST_MODES = [
-  { value: "add", label: "Add" },
-  { value: "remove", label: "Remove" },
-  { value: "set", label: "Set to" },
-] as const;
-
-const ADJUST_REASONS = [
-  { value: "RESTOCK", label: "Restock", hint: "New stock arrived" },
-  { value: "ADJUSTMENT", label: "Correction", hint: "Count didn’t match" },
-  { value: "RETURN", label: "Return", hint: "Came back resellable" },
-  { value: "DAMAGE", label: "Damaged", hint: "Written off" },
-] as const;
-
 /**
  * One button per row that opens a dialog, so the stock table stays readable
- * instead of repeating five form controls on every line.
+ * instead of repeating form controls on every line. Restocking only: every
+ * change is logged as a RESTOCK movement.
  */
-export function StockAdjustButton({ variantId, stock, name, label }: { variantId: string; stock: number; name: string; label: string }) {
+export function StockAdjustButton({ variantId, name, label }: { variantId: string; name: string; label: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [state, action] = useRefreshingAction(adjustStockAction);
-  const [mode, setMode] = useState<string>("add");
-  const [reason, setReason] = useState<string>("RESTOCK");
   const [qty, setQty] = useState("");
 
   useEffect(() => {
     if (state?.success) dialog.current?.close();
   }, [state]);
 
-  const n = Number(qty);
-  const valid = qty !== "" && Number.isFinite(n) && n >= 0;
-  const after = !valid ? stock : mode === "add" ? stock + n : mode === "remove" ? Math.max(0, stock - n) : n;
-
   function open() {
-    setMode("add");
-    setReason("RESTOCK");
     setQty("");
     dialog.current?.showModal();
   }
@@ -107,7 +86,7 @@ export function StockAdjustButton({ variantId, stock, name, label }: { variantId
   return (
     <>
       <button type="button" onClick={open} className="btn btn-outline btn-sm whitespace-nowrap text-forest-800">
-        Adjust stock
+        <Plus className="size-3.5" /> Add stock
       </button>
       <dialog
         ref={dialog}
@@ -117,7 +96,7 @@ export function StockAdjustButton({ variantId, stock, name, label }: { variantId
       >
         <div className="flex items-start justify-between gap-3 border-b border-cream-200 bg-botanical-100/45 px-5 py-4">
           <div className="min-w-0">
-            <h2 className="display text-[1.35rem] leading-none text-forest-900">Adjust stock</h2>
+            <h2 className="display text-[1.35rem] leading-none text-forest-900">Add stock</h2>
             <p className="mt-1.5 truncate text-xs text-ink-500">{name} · {label}</p>
           </div>
           <button type="button" aria-label="Close" onClick={() => dialog.current?.close()} className="grid size-7 shrink-0 place-items-center rounded-full text-ink-500 transition hover:bg-white hover:text-forest-800">
@@ -127,95 +106,37 @@ export function StockAdjustButton({ variantId, stock, name, label }: { variantId
 
         <ActionForm action={action} className="grid gap-4 p-5">
           <input type="hidden" name="variantId" value={variantId} />
-          <input type="hidden" name="mode" value={mode} />
-          <input type="hidden" name="reason" value={reason} />
-
-          <div className="flex items-center justify-between rounded-[18px] border border-cream-200 bg-ivory-50 px-4 py-3">
-            <span className="text-xs uppercase tracking-[0.14em] text-ink-500">Now</span>
-            <span className="flex items-baseline gap-2.5 tabular-nums">
-              <span className="text-lg font-semibold text-ink-900">{stock}</span>
-              <span className="text-ink-500">→</span>
-              <span className={cn("display text-[1.8rem] leading-none", after > stock ? "text-green-600" : after < stock ? "text-danger-600" : "text-ink-500")}>{after}</span>
-            </span>
-          </div>
+          <input type="hidden" name="mode" value="add" />
+          <input type="hidden" name="reason" value="RESTOCK" />
 
           <div>
-            <span className="field-label">What are you doing?</span>
-            <div className="flex gap-2">
-              {ADJUST_MODES.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  aria-pressed={mode === m.value}
-                  onClick={() => { setMode(m.value); setQty(m.value === "set" ? String(stock) : ""); }}
-                  className={cn(
-                    "flex-1 rounded-full border px-3 py-2 text-[13px] transition",
-                    mode === m.value ? "border-forest-800 bg-forest-800 font-medium text-ivory-50" : "border-cream-200 bg-white text-ink-700 hover:border-forest-800",
-                  )}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="field-label" htmlFor={`qty-${variantId}`}>
-              {mode === "set" ? "New total" : "How many units"}
-            </label>
+            <label className="field-label" htmlFor={`qty-${variantId}`}>How many units are you adding?</label>
             <input
               id={`qty-${variantId}`}
               name="quantity"
               type="number"
-              min={0}
+              min={1}
               required
               autoFocus
               value={qty}
               onChange={(e) => setQty(e.target.value)}
-              className="field-input text-lg tabular-nums"
+              placeholder="0"
+              className="field-input text-center text-[1.6rem] tabular-nums"
             />
-            {mode !== "set" && (
-              <div className="mt-2 flex gap-2">
-                {[10, 25, 50, 100].map((q) => (
-                  <button key={q} type="button" onClick={() => setQty(String(q))} className="rounded-full border border-cream-200 px-3 py-1 text-xs text-ink-700 transition hover:border-forest-800 hover:text-forest-800">
-                    {mode === "remove" ? "−" : "+"}{q}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <span className="field-label">Why?</span>
-            <div className="grid grid-cols-2 gap-2">
-              {ADJUST_REASONS.map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  aria-pressed={reason === r.value}
-                  onClick={() => setReason(r.value)}
-                  className={cn(
-                    "rounded-[14px] border px-3 py-2 text-left transition",
-                    reason === r.value ? "border-forest-800 bg-botanical-100/60" : "border-cream-200 bg-white hover:border-forest-800",
-                  )}
-                >
-                  <span className="block text-[13px] font-medium text-forest-900">{r.label}</span>
-                  <span className="block text-[11px] text-ink-500">{r.hint}</span>
+            <div className="mt-2 flex gap-2">
+              {[10, 25, 50, 100].map((q) => (
+                <button key={q} type="button" onClick={() => setQty(String(q))} className="flex-1 rounded-full border border-cream-200 px-3 py-1.5 text-xs text-ink-700 transition hover:border-forest-800 hover:text-forest-800">
+                  +{q}
                 </button>
               ))}
             </div>
-          </div>
-
-          <div>
-            <label className="field-label" htmlFor={`note-${variantId}`}>Note (optional)</label>
-            <input id={`note-${variantId}`} name="note" placeholder="e.g. invoice 221, counted by Safeer" className="field-input py-2.5" />
           </div>
 
           {state?.error && <p role="alert" className="rounded-xl bg-danger-600/10 px-3 py-2 text-sm text-danger-600">{state.error}</p>}
 
           <div className="flex justify-end gap-2 border-t border-cream-200 pt-4">
             <button type="button" className="btn btn-outline btn-sm text-ink-700" onClick={() => dialog.current?.close()}>Cancel</button>
-            <SubmitButton className="px-6 py-2.5" pendingText="Saving…">Apply change</SubmitButton>
+            <SubmitButton className="px-6 py-2.5" pendingText="Saving…">Add to stock</SubmitButton>
           </div>
         </ActionForm>
       </dialog>

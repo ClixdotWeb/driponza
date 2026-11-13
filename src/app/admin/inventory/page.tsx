@@ -132,7 +132,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
                     <td className="tabular-nums">{v.damagedStock ? <span className="text-danger-600">{v.damagedStock}</span> : <span className="text-ink-500/50">—</span>}</td>
                     {canManage && (
                       <td className="text-right">
-                        <StockAdjustButton variantId={v.id} stock={v.stock} name={v.product.name} label={v.label} />
+                        <StockAdjustButton variantId={v.id} name={v.product.name} label={v.label} />
                       </td>
                     )}
                   </tr>
