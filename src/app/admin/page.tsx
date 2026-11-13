@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import { AdminHeader, Panel, Stat, Table, Tray } from "@/components/admin/ui";
+import { Panel, Stat, Table, Tray } from "@/components/admin/ui";
+import { Cardamom, Cinnamon, StarAnise } from "@/components/spices/Spices";
 import { RevenueChart } from "@/components/admin/RevenueChart";
 import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadge";
 import { db } from "@/lib/db";
@@ -46,25 +47,43 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 
   const rangeLink = (r: string) => `/admin?range=${r}`;
   const activeRange = sp.from || sp.to ? null : (sp.range ?? "30d");
+  const istHour = Number(new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", hour12: false }));
+  const greeting = istHour < 12 ? "Good morning" : istHour < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <>
-      <AdminHeader
-        title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, ${staff.name.split(" ")[0]}`}
-        description="Live numbers from the store database."
-        actions={
-          <form className="flex flex-wrap items-center gap-2 text-[13px]" action="/admin">
-            {Object.keys(RANGES).map((r) => (
-              <Link key={r} href={rangeLink(r)} className={`rounded-full border px-3.5 py-1.5 ${activeRange === r ? "border-ink-900/10 bg-white font-medium shadow-sm" : "border-[#eceee9] text-ink-500"}`}>
-                {r.replace("d", " days").replace("365 days", "1 year")}
-              </Link>
-            ))}
-            <input type="date" name="from" defaultValue={sp.from} className="field-input w-auto py-1.5 text-[13px]" aria-label="From" />
-            <input type="date" name="to" defaultValue={sp.to} className="field-input w-auto py-1.5 text-[13px]" aria-label="To" />
-            <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
-          </form>
-        }
-      />
+      {/* Greeting banner in the storefront's hero style */}
+      <section className="hero-surface grain relative isolate mb-6 overflow-hidden rounded-[var(--radius-panel)] px-6 py-8 text-ivory-50 md:px-10 md:py-10">
+        <Cinnamon uid="dh1" className="pointer-events-none absolute -right-10 -top-6 w-56 rotate-[24deg] opacity-90 drop-shadow-[0_24px_30px_rgba(0,0,0,0.45)] md:w-72" />
+        <StarAnise uid="dh2" className="pointer-events-none absolute bottom-4 right-[30%] hidden w-16 drop-shadow-[0_14px_18px_rgba(0,0,0,0.45)] md:block" />
+        <Cardamom uid="dh3" className="pointer-events-none absolute right-[18%] top-[58%] hidden w-8 rotate-[30deg] drop-shadow-xl md:block" />
+        <div className="relative max-w-xl">
+          <p className="font-[family-name:var(--font-script)] text-2xl text-leaf-200">{greeting},</p>
+          <h1 className="display mt-1 text-[clamp(2.4rem,4.5vw,3.6rem)] leading-none">{staff.name.split(" ")[0]}</h1>
+          <p className="mt-3 text-sm text-ivory-50/75">
+            {m.pendingTransfers > 0 ? `${m.pendingTransfers} bank transfer(s) waiting to be verified · ` : ""}
+            {m.orders.confirmed + m.orders.processing} order(s) to fulfil · live numbers from your store.
+          </p>
+          {financial && (
+            <p className="mt-5 inline-flex items-baseline gap-2 rounded-full bg-ivory-50/10 px-4 py-2 ring-1 ring-ivory-50/15">
+              <span className="text-xs text-ivory-50/70">Received today</span>
+              <span className="display text-2xl text-leaf-200">{formatINR(m.revenue.today.net)}</span>
+            </p>
+          )}
+        </div>
+      </section>
+
+      <form className="mb-6 flex flex-wrap items-center gap-2 text-[13px]" action="/admin">
+        <span className="mr-1 text-xs uppercase tracking-[0.14em] text-ink-500">Range</span>
+        {Object.keys(RANGES).map((r) => (
+          <Link key={r} href={rangeLink(r)} className={`rounded-full border px-3.5 py-1.5 ${activeRange === r ? "border-forest-800 bg-forest-800 text-ivory-50" : "border-cream-200 bg-white text-ink-700 hover:border-forest-800"}`}>
+            {r.replace("d", " days").replace("365 days", "1 year")}
+          </Link>
+        ))}
+        <input type="date" name="from" defaultValue={sp.from} className="field-input w-auto py-1.5 text-[13px]" aria-label="From" />
+        <input type="date" name="to" defaultValue={sp.to} className="field-input w-auto py-1.5 text-[13px]" aria-label="To" />
+        <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
+      </form>
 
       {sp.denied && (
         <p className="mb-5 rounded-2xl bg-[#fbefd6] px-4 py-3 text-sm text-[#8a5a00]">
