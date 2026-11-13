@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { requirePermission } from "@/lib/auth/session";
 import Link from "next/link";
-import { AlertTriangle, Plus, Star } from "lucide-react";
+import { AlertTriangle, ExternalLink, Pencil, Plus, Star } from "lucide-react";
 import { AdminHeader, Empty, Table } from "@/components/admin/ui";
 import { db } from "@/lib/db";
 import { formatINR, toPaise } from "@/lib/money";
@@ -51,7 +51,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
       </form>
       {products.length ? (
         <Table>
-          <thead><tr><th>Product</th><th>Category</th><th>Variants</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+          <thead><tr><th>Product</th><th>Category</th><th>Variants</th><th>Price</th><th>Stock</th><th>Status</th><th className="text-right">Actions</th></tr></thead>
           <tbody>
             {products.map((p) => {
               const stock = p.variants.reduce((n, v) => n + v.stock, 0);
@@ -77,6 +77,23 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
                   <td className="tabular-nums">{prices.length ? formatINR(Math.min(...prices)) : "—"}</td>
                   <td className={cn("tabular-nums", stock === 0 && "text-danger-600")}>{stock}</td>
                   <td><span className={cn("rounded-full px-2.5 py-1 text-[11px]", p.isActive ? "bg-botanical-100 text-green-600" : "bg-cream-100 text-ink-500")}>{p.isActive ? "Active" : "Hidden"}</span></td>
+                  <td>
+                    <div className="flex items-center justify-end gap-2">
+                      <Link href={`/admin/products/${p.id}`} className="btn btn-outline btn-sm text-forest-800" aria-label={`Edit ${p.name}`}>
+                        <Pencil className="size-3.5" /> Edit
+                      </Link>
+                      <Link
+                        href={`/products/${p.slug}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="View on store"
+                        aria-label={`View ${p.name} on the store`}
+                        className="inline-flex size-8 items-center justify-center rounded-full border border-cream-200 text-ink-500 transition hover:border-forest-800 hover:text-forest-800"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
