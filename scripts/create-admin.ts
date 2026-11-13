@@ -19,10 +19,11 @@ async function main() {
   if (password.length < 10) throw new Error("Admin password must be at least 10 characters");
 
   const passwordHash = await bcrypt.hash(password, 12);
+  await db.staffRole.upsert({ where: { id: "role_super_admin" }, create: { id: "role_super_admin", name: "Super Admin", description: "Full access to every module, staff and settings", permissions: ["*"], isSystem: true }, update: { permissions: ["*"], isSystem: true } });
   const user = await db.user.upsert({
     where: { email },
-    update: { role: "ADMIN", passwordHash, isActive: true },
-    create: { email, name, passwordHash, role: "ADMIN" },
+    update: { role: "ADMIN", staffRoleId: "role_super_admin", passwordHash, isActive: true, emailVerifiedAt: new Date() },
+    create: { email, name, passwordHash, role: "ADMIN", staffRoleId: "role_super_admin", emailVerifiedAt: new Date() },
   });
   console.log(`Admin ready: ${user.email}`);
 }

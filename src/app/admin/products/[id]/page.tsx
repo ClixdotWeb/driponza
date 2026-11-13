@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requirePermission } from "@/lib/auth/session";
 import { notFound } from "next/navigation";
 import { AdminHeader } from "@/components/admin/ui";
 import { ProductForm } from "@/components/admin/ProductForm";
@@ -9,6 +10,7 @@ import { db } from "@/lib/db";
 export const metadata = { title: "Edit product" };
 
 export default async function EditProductPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
+  await requirePermission("products.view");
   const { id } = await params;
   const { created } = await searchParams;
   const [product, categories] = await Promise.all([

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { requirePermission } from "@/lib/auth/session";
 import Link from "next/link";
 import { AlertTriangle, Plus, Star } from "lucide-react";
 import { AdminHeader, Empty, Table } from "@/components/admin/ui";
@@ -10,6 +11,7 @@ import type { Prisma } from "@/generated/prisma/client";
 export const metadata = { title: "Products" };
 
 export default async function AdminProducts({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; review?: string; status?: string }> }) {
+  await requirePermission("products.view");
   const sp = await searchParams;
   const where: Prisma.ProductWhereInput = {
     ...(sp.q ? { OR: [{ name: { contains: sp.q, mode: "insensitive" } }, { variants: { some: { sku: { contains: sp.q, mode: "insensitive" } } } }] } : {}),

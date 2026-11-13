@@ -193,9 +193,13 @@ export async function createOrder(args: {
 }) {
   const settings = await getSettings();
   const { cart, address, method } = args;
-  const lines = cart.lines.filter((l) => !l.problem);
+  // Problems first: an item that just sold out must not be reported as an "empty cart".
+  if (cart.hasProblems) {
+    const p = cart.lines.find((l) => l.problem)!;
+    throw new OrderError(`${p.name} (${p.variantLabel}): ${p.problem!.toLowerCase()} – please review your cart.`);
+  }
+  const lines = cart.lines;
   if (!lines.length) throw new OrderError("Your cart is empty.");
-  if (cart.hasProblems) throw new OrderError("Some items in your cart need attention – please review your cart.");
   if (lines.some((l) => l.quantity > settings.commerce.maxQtyPerLine)) throw new OrderError(`You can order at most ${settings.commerce.maxQtyPerLine} of each item.`);
 
   const email = args.email.trim().toLowerCase();

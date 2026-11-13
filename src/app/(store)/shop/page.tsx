@@ -6,11 +6,13 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { Reveal } from "@/components/motion/Reveal";
 import { SortSelect } from "@/components/store/SortSelect";
 import { cn } from "@/lib/utils";
-import { getStoreCategories, searchProducts, type SortKey } from "@/server/catalog";
+import { getPackSizes, getStoreCategories, searchProducts, type SortKey } from "@/server/catalog";
 
 export const metadata: Metadata = { title: "Shop spices", description: "Shop Driponza whole spices — cardamom, cloves, cinnamon, mace, nutmeg, star anise, bay leaf and black pepper." };
 
-const SORTS: SortKey[] = ["featured", "price-asc", "price-desc", "name", "newest"];
+const SORTS: SortKey[] = ["featured", "price-asc", "price-desc", "name", "newest", "bestselling", "popular"];
+const PER_PAGE = 24;
+const rupees = (v?: string) => (v && /^d{1,6}$/.test(v) ? Number(v) * 100 : undefined);
 
 export default async function ShopPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -18,13 +20,24 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   const category = sp.category ?? "";
   const sort = (SORTS.includes(sp.sort as SortKey) ? sp.sort : "featured") as SortKey;
   const inStock = sp.instock === "1";
+  const minPaise = rupees(sp.min);
+  const maxPaise = rupees(sp.max);
+  const weight = sp.weight && /^d{1,5}$/.test(sp.weight) ? Number(sp.weight) : undefined;
+  const page = Math.max(1, Number(sp.page) || 1);
 
-  const [categories, products] = await Promise.all([getStoreCategories(), searchProducts({ q, category: category || undefined, sort, inStock })]);
+  const [categories, all, sizes] = await Promise.all([
+    getStoreCategories(),
+    searchProducts({ q, category: category || undefined, sort, inStock, minPaise, maxPaise, weightGrams: weight }),
+    getPackSizes(),
+  ]);
+  const pages = Math.max(1, Math.ceil(all.length / PER_PAGE));
+  const products = all.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const filtered = Boolean(minPaise !== undefined || maxPaise !== undefined || weight);
   const active = categories.find((c) => c.slug === category);
 
   const href = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams();
-    const merged = { q, category, sort: sort === "featured" ? "" : sort, instock: inStock ? "1" : "", ...patch };
+    const merged = { q, category, sort: sort === "featured" ? "" : sort, instock: inStock ? "1" : "", min: sp.min ?? "", max: sp.max ?? "", weight: sp.weight ?? "", page: "", ...patch };
     for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
     const s = params.toString();
     return s ? `/shop?${s}` : "/shop";
@@ -66,8 +79,44 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
           </div>
         </div>
 
-        <p className="mt-8 text-sm text-ink-500">
-          {products.length} product{products.length === 1 ? "" : "s"}
+        <details className="group mt-6 rounded-[22px] border border-cream-200 bg-white" open={filtered}>
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3.5 text-sm font-medium">
+            <span>Filters{filtered ? " · active" : ""}</span>
+            <span className="text-ink-500 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <form action="/shop" className="grid gap-4 border-t border-cream-200 p-5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr_auto] lg:items-end">
+            {q && <input type="hidden" name="q" value={q} />}
+            {category && <input type="hidden" name="category" value={category} />}
+            {sort !== "featured" && <input type="hidden" name="sort" value={sort} />}
+            <div>
+              <label htmlFor="f-min" className="field-label">Min price (₹)</label>
+              <input id="f-min" name="min" inputMode="numeric" defaultValue={sp.min} className="field-input py-2" />
+            </div>
+            <div>
+              <label htmlFor="f-max" className="field-label">Max price (₹)</label>
+              <input id="f-max" name="max" inputMode="numeric" defaultValue={sp.max} className="field-input py-2" />
+            </div>
+            <fieldset>
+              <legend className="field-label">Pack size</legend>
+              <div className="flex flex-wrap gap-2">
+                <label className="chip cursor-pointer border-cream-200 has-[:checked]:border-forest-800 has-[:checked]:bg-forest-800 has-[:checked]:text-ivory-50"><input type="radio" name="weight" value="" defaultChecked={!weight} className="sr-only" />Any</label>
+                {sizes.map((g) => (
+                  <label key={g} className="chip cursor-pointer border-cream-200 has-[:checked]:border-forest-800 has-[:checked]:bg-forest-800 has-[:checked]:text-ivory-50">
+                    <input type="radio" name="weight" value={g} defaultChecked={weight === g} className="sr-only" />{g >= 1000 ? `${g / 1000} kg` : `${g} g`}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="instock" value="1" defaultChecked={inStock} className="accent-green-600" /> In stock</label>
+              <button className="btn btn-primary btn-sm">Apply</button>
+              {filtered && <Link href={href({ min: null, max: null, weight: null })} className="text-sm text-ink-500 underline">Reset</Link>}
+            </div>
+          </form>
+        </details>
+
+        <p className="mt-8 text-sm text-ink-500" aria-live="polite">
+          {all.length} product{all.length === 1 ? "" : "s"}{q ? ` for “${q}”` : ""}
         </p>
 
         {products.length ? (
@@ -82,6 +131,13 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
             <p className="mt-3 text-ink-500">Try another search or browse all products.</p>
             <Link href="/shop" className="btn btn-primary mt-6">Clear filters</Link>
           </div>
+        )}
+        {pages > 1 && (
+          <nav aria-label="Pages" className="mt-12 flex items-center justify-center gap-2 text-sm">
+            {page > 1 && <Link href={href({ page: String(page - 1) })} className="btn btn-outline btn-sm text-forest-800">Previous</Link>}
+            <span className="text-ink-500">Page {page} of {pages}</span>
+            {page < pages && <Link href={href({ page: String(page + 1) })} className="btn btn-outline btn-sm text-forest-800">Next</Link>}
+          </nav>
         )}
       </section>
     </>

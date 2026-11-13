@@ -248,7 +248,7 @@ const adjustSchema = z.object({
   variantId: z.string().cuid(),
   mode: z.enum(["add", "remove", "set"]),
   quantity: z.coerce.number().int().min(0).max(1_000_000),
-  reason: z.enum(["RESTOCK", "ADJUSTMENT", "RETURN"]),
+  reason: z.enum(["RESTOCK", "ADJUSTMENT", "RETURN", "DAMAGE"]),
   note: z.string().trim().max(200).optional(),
 });
 
@@ -264,7 +264,10 @@ export async function adjustStockAction(_: FormState, form: FormData): Promise<F
       if (next < 0) throw new Error(`Can't remove ${quantity} – only ${v.stock} in stock.`);
       const change = next - v.stock;
       if (change === 0) return;
-      await tx.productVariant.update({ where: { id: variantId }, data: { stock: next } });
+      if (reason === "DAMAGE" && change > 0) throw new Error("Damage write-offs must remove stock.");
+      // Damaged units leave sellable stock and are tracked separately.
+      const conditional = await tx.productVariant.updateMany({ where: { id: variantId, stock: v.stock }, data: { stock: next, ...(reason === "DAMAGE" ? { damagedStock: { increment: -change } } : {}) } });
+      if (conditional.count === 0) throw new Error("Stock changed while you were editing (an order may have just come in) – please retry.");
       await tx.inventoryMovement.create({ data: { variantId, change, stockAfter: next, reason, note: note || null, userId: admin.id } });
     });
   } catch (err) {

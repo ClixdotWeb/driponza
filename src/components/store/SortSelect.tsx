@@ -8,6 +8,8 @@ const OPTIONS = [
   { value: "price-desc", label: "Price: high to low" },
   { value: "name", label: "Name A–Z" },
   { value: "newest", label: "Newest" },
+  { value: "bestselling", label: "Best selling" },
+  { value: "popular", label: "Popularity" },
 ];
 
 export function SortSelect({ value }: { value: string }) {
@@ -21,6 +23,7 @@ export function SortSelect({ value }: { value: string }) {
         value={value}
         onChange={(e) => {
           const next = new URLSearchParams(params.toString());
+          next.delete("page");
           if (e.target.value === "featured") next.delete("sort");
           else next.set("sort", e.target.value);
           router.push(`${pathname}${next.size ? `?${next}` : ""}`);

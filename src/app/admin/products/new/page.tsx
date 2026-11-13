@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requirePermission } from "@/lib/auth/session";
 import { AdminHeader } from "@/components/admin/ui";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { db } from "@/lib/db";
@@ -6,6 +7,7 @@ import { db } from "@/lib/db";
 export const metadata = { title: "New product" };
 
 export default async function NewProductPage() {
+  await requirePermission("products.create");
   const categories = await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } });
   if (!categories.length) {
     return (

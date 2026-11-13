@@ -79,6 +79,7 @@ export function StockAdjustForm({ variantId, stock }: { variantId: string; stock
         <option value="RESTOCK">Restock</option>
         <option value="ADJUSTMENT">Adjustment</option>
         <option value="RETURN">Return</option>
+        <option value="DAMAGE">Damaged (write off)</option>
       </select>
       <input name="note" placeholder="Note" className="field-input w-28 py-1.5 text-xs" />
       <SubmitButton className="btn-sm">Apply</SubmitButton>

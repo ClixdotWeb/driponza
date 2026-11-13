@@ -1,74 +1,67 @@
 import { Download } from "lucide-react";
-import { AdminHeader, Panel, Table } from "@/components/admin/ui";
-import { RevenueChart } from "@/components/admin/RevenueChart";
-import { formatINR } from "@/lib/money";
-import { monthLabel, monthlyRevenue, topProducts } from "@/server/reports";
+import { AdminHeader, Empty, Panel, PillTabs, Table } from "@/components/admin/ui";
+import { requirePermission } from "@/lib/auth/session";
+import { hasPermission } from "@/lib/permissions";
+import { buildReport, REPORTS } from "@/server/report-builder";
+import { istDayStart } from "@/server/reports";
 
 export const metadata = { title: "Reports" };
+const PER_PAGE = 100;
 
-export default async function ReportsPage() {
-  const [months, top] = await Promise.all([monthlyRevenue(12), topProducts(10)]);
-  const totals = months.reduce((a, m) => ({ orders: a.orders + m.orders, gross: a.gross + m.gross, refunds: a.refunds + m.refunds, net: a.net + m.net }), { orders: 0, gross: 0, refunds: 0, net: 0 });
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ r?: string; from?: string; to?: string; page?: string }> }) {
+  const staff = await requirePermission("reports.view");
+  const sp = await searchParams;
+  const allowed = Object.entries(REPORTS).filter(([, v]) => hasPermission(staff.permissions, v.perm));
+  const name = allowed.some(([k]) => k === sp.r) ? sp.r! : allowed[0]?.[0];
+  const from = sp.from ? new Date(`${sp.from}T00:00:00+05:30`) : istDayStart(new Date(), -29);
+  const to = sp.to ? new Date(new Date(`${sp.to}T00:00:00+05:30`).getTime() + 864e5) : new Date();
+  const report = name ? await buildReport(name, { from, to }) : null;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const rows = report?.rows.slice((page - 1) * PER_PAGE, page * PER_PAGE) ?? [];
+  const pages = Math.ceil((report?.rows.length ?? 0) / PER_PAGE);
+  const qs = (extra: Record<string, string>) => new URLSearchParams({ ...(name ? { r: name } : {}), ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}), ...extra }).toString();
 
   return (
     <>
-      <AdminHeader title="Sales reports" description="Based on paid orders (online payments verified by Razorpay, and COD orders once delivered)." />
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <Panel title="Net revenue — last 12 months"><RevenueChart rows={months} /></Panel>
-        <Panel title="Export orders">
-          <form action="/api/admin/reports/export" className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="field-label">From</label><input type="date" name="from" className="field-input py-2" /></div>
-              <div><label className="field-label">To</label><input type="date" name="to" className="field-input py-2" /></div>
-            </div>
-            <button className="btn btn-primary w-fit"><Download className="size-4" /> Download CSV</button>
-            <p className="text-xs text-ink-500">Opens in Excel / Google Sheets. Leave dates empty for all orders.</p>
+      <AdminHeader
+        title="Reports"
+        description="Every figure is calculated live from orders, the payment ledger and inventory records."
+        actions={
+          <form className="flex flex-wrap items-center gap-2 text-[13px]">
+            <input type="hidden" name="r" value={name} />
+            <input type="date" name="from" defaultValue={sp.from ?? from.toISOString().slice(0, 10)} className="field-input w-auto py-1.5 text-[13px]" aria-label="From" />
+            <input type="date" name="to" defaultValue={sp.to} className="field-input w-auto py-1.5 text-[13px]" aria-label="To" />
+            <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
+            {name && <a href={`/api/admin/reports/${name}?${qs({})}`} className="btn btn-sm btn-primary"><Download className="size-3.5" /> CSV</a>}
           </form>
-        </Panel>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Panel title="Monthly breakdown">
-          <Table>
-            <thead><tr><th>Month</th><th>Paid orders</th><th className="text-right">Gross</th><th className="text-right">Refunds</th><th className="text-right">Net</th></tr></thead>
-            <tbody>
-              {[...months].reverse().map((m) => (
-                <tr key={m.month}>
-                  <td>{monthLabel(m.month)}</td>
-                  <td>{m.orders}</td>
-                  <td className="text-right tabular-nums">{formatINR(m.gross)}</td>
-                  <td className="text-right tabular-nums text-ink-500">{m.refunds ? `−${formatINR(m.refunds)}` : "—"}</td>
-                  <td className="text-right font-medium tabular-nums">{formatINR(m.net)}</td>
-                </tr>
-              ))}
-              <tr className="bg-cream-100 font-medium">
-                <td>Total</td><td>{totals.orders}</td>
-                <td className="text-right tabular-nums">{formatINR(totals.gross)}</td>
-                <td className="text-right tabular-nums">{totals.refunds ? `−${formatINR(totals.refunds)}` : "—"}</td>
-                <td className="text-right tabular-nums">{formatINR(totals.net)}</td>
-              </tr>
-            </tbody>
-          </Table>
-        </Panel>
-        <Panel title="Top products (by revenue)">
-          {top.length ? (
-            <Table>
-              <thead><tr><th>Product</th><th>Units</th><th className="text-right">Revenue</th></tr></thead>
-              <tbody>
-                {top.map((t) => (
-                  <tr key={`${t.name}-${t.variant}`}>
-                    <td>{t.name}<span className="block text-xs text-ink-500">{t.variant}</span></td>
-                    <td>{t.units}</td>
-                    <td className="text-right tabular-nums">{formatINR(t.revenuePaise)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+        }
+      />
+      <PillTabs items={allowed.map(([k, v]) => ({ label: v.label, href: `/admin/reports?${new URLSearchParams({ r: k, ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}) })}`, active: k === name }))} />
+      {report && (
+        <Panel title={report.title}>
+          <p className="mb-4 text-xs text-ink-500">{report.description}</p>
+          {report.rows.length ? (
+            <>
+              <Table>
+                <thead><tr>{report.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                <tbody>
+                  {rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={typeof c === "number" || /^₹|^-?₹/.test(String(c)) ? "tabular-nums" : ""}>{c}</td>)}</tr>)}
+                  {report.totals && page === pages && <tr className="font-semibold">{report.totals.map((c, j) => <td key={j} className="tabular-nums">{c}</td>)}</tr>}
+                </tbody>
+              </Table>
+              {pages > 1 && (
+                <div className="mt-3 flex justify-end gap-2 text-sm">
+                  {page > 1 && <a className="btn btn-sm btn-outline text-forest-800" href={`/admin/reports?${qs({ page: String(page - 1) })}`}>Previous</a>}
+                  <span className="text-ink-500">Page {page} of {pages}</span>
+                  {page < pages && <a className="btn btn-sm btn-outline text-forest-800" href={`/admin/reports?${qs({ page: String(page + 1) })}`}>Next</a>}
+                </div>
+              )}
+            </>
           ) : (
-            <p className="text-sm text-ink-500">No sales yet.</p>
+            <Empty>No data for this range.</Empty>
           )}
         </Panel>
-      </div>
+      )}
     </>
   );
 }

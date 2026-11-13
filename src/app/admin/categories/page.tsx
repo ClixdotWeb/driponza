@@ -1,10 +1,12 @@
 import { AdminHeader, Panel } from "@/components/admin/ui";
+import { requirePermission } from "@/lib/auth/session";
 import { CategoryForm } from "@/components/admin/Forms";
 import { db } from "@/lib/db";
 
 export const metadata = { title: "Categories" };
 
 export default async function CategoriesPage() {
+  await requirePermission("categories.manage");
   const categories = await db.category.findMany({ orderBy: { position: "asc" }, include: { _count: { select: { products: true } } } });
   return (
     <>

@@ -100,9 +100,9 @@ export const getStoreCategories = cache(async () => {
     }));
 });
 
-export type SortKey = "featured" | "price-asc" | "price-desc" | "name" | "newest";
+export type SortKey = "featured" | "price-asc" | "price-desc" | "name" | "newest" | "bestselling" | "popular";
 
-export async function searchProducts(opts: { q?: string; category?: string; sort?: SortKey; inStock?: boolean }) {
+export async function searchProducts(opts: { q?: string; category?: string; sort?: SortKey; inStock?: boolean; minPaise?: number; maxPaise?: number; weightGrams?: number }) {
   const q = opts.q?.trim().slice(0, 80);
   const where: Prisma.ProductWhereInput = {
     ...visible,
@@ -114,10 +114,28 @@ export async function searchProducts(opts: { q?: string; category?: string; sort
             { description: { contains: q, mode: "insensitive" } },
             { tag: { contains: q, mode: "insensitive" } },
             { category: { name: { contains: q, mode: "insensitive" } } },
+            { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
           ],
         }
       : {}),
-    ...(opts.inStock ? { variants: { some: { isActive: true, stock: { gt: 0 } } } } : {}),
+    ...(opts.inStock || opts.minPaise !== undefined || opts.maxPaise !== undefined || opts.weightGrams
+      ? {
+          AND: [
+            {
+              variants: {
+                some: {
+                  isActive: true,
+                  ...(opts.inStock ? { stock: { gt: 0 } } : {}),
+                  ...(opts.weightGrams ? { weightGrams: opts.weightGrams } : {}),
+                  ...(opts.minPaise !== undefined || opts.maxPaise !== undefined
+                    ? { price: { ...(opts.minPaise !== undefined ? { gte: (opts.minPaise / 100).toFixed(2) } : {}), ...(opts.maxPaise !== undefined ? { lte: (opts.maxPaise / 100).toFixed(2) } : {}) } }
+                    : {}),
+                },
+              },
+            },
+          ],
+        }
+      : {}),
   };
   const orderBy: Prisma.ProductOrderByWithRelationInput[] =
     opts.sort === "name"
@@ -131,7 +149,22 @@ export async function searchProducts(opts: { q?: string; category?: string; sort
   const minPrice = (p: ProductView) => Math.min(...p.variants.map((v) => v.pricePaise), Number.MAX_SAFE_INTEGER);
   if (opts.sort === "price-asc") views.sort((a, b) => minPrice(a) - minPrice(b));
   if (opts.sort === "price-desc") views.sort((a, b) => minPrice(b) - minPrice(a));
+  if (opts.sort === "bestselling" || opts.sort === "popular") {
+    const ids = views.map((v) => v.id);
+    const [sold, loved] = await Promise.all([
+      db.orderItem.groupBy({ by: ["productId"], where: { productId: { in: ids }, order: { status: { notIn: ["CANCELLED", "AWAITING_PAYMENT", "PAYMENT_VERIFICATION", "PENDING"] } } }, _sum: { quantity: true } }),
+      opts.sort === "popular" ? db.wishlistItem.groupBy({ by: ["productId"], where: { productId: { in: ids } }, _count: true }) : Promise.resolve([] as Array<{ productId: string; _count: number }>),
+    ]);
+    const score = (id: string) => (sold.find((x) => x.productId === id)?._sum.quantity ?? 0) + 2 * (loved.find((x) => x.productId === id)?._count ?? 0);
+    views.sort((a, b) => score(b.id) - score(a.id));
+  }
   return views;
+}
+
+/** Distinct pack sizes on sale (for the weight filter). */
+export async function getPackSizes() {
+  const rows = await db.productVariant.findMany({ where: { isActive: true, weightGrams: { not: null }, product: visible }, select: { weightGrams: true }, distinct: ["weightGrams"], orderBy: { weightGrams: "asc" } });
+  return rows.map((r) => r.weightGrams!) as number[];
 }
 
 export const getProductBySlug = cache(async (slug: string) => {
