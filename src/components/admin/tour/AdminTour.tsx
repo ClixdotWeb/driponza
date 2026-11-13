@@ -67,6 +67,7 @@ export function AdminTour() {
   const finish = useCallback(() => {
     setRunning(false);
     setIndex(0);
+    setBox(null);
     if (tour) markSeen(tour.id);
   }, [tour]);
 
@@ -147,7 +148,9 @@ export function AdminTour() {
     <>
       <button
         type="button"
-        onClick={() => { setIndex(0); setRunning(true); }}
+        // Clearing the box matters: without it the first step would be drawn at the
+        // position the last step of the previous run left behind, then slide to the middle.
+        onClick={() => { setBox(null); setIndex(0); setRunning(true); }}
         title={`${tour.label} — show me around this page`}
         aria-label={`${tour.label} — show me around this page`}
         className="relative grid size-10 place-items-center rounded-full bg-ivory-50/10 ring-1 ring-ivory-50/15 transition hover:bg-ivory-50/20"
@@ -209,20 +212,41 @@ function TourCard({
   onFinish: () => void;
 }) {
   const last = index === total - 1;
+  const inner = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(240);
+
+  // Measure the card so placement uses its real height, not a guess.
+  useLayoutEffect(() => {
+    const h = inner.current?.offsetHeight;
+    if (h && h !== height) setHeight(h);
+  }, [step, height]);
+
   const style = useMemo<React.CSSProperties>(() => {
     const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
     const vh = typeof window === "undefined" ? 800 : window.innerHeight;
     const width = Math.min(CARD_W, vw - GAP * 2);
     if (!box) return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width };
-    const below = box.top + box.height + GAP;
-    const top = vh - below > 230 ? below : Math.max(GAP, box.top - 230 - GAP);
-    const left = Math.min(Math.max(GAP, box.left + box.width / 2 - width / 2), Math.max(GAP, vw - width - GAP));
-    return { top, left, width };
-  }, [box]);
+
+    const clamp = (v: number, max: number) => Math.min(Math.max(GAP, v), Math.max(GAP, max));
+    const centredLeft = clamp(box.left + box.width / 2 - width / 2, vw - width - GAP);
+    const centredTop = clamp(box.top + box.height / 2 - height / 2, vh - height - GAP);
+
+    // Below, then above, then to the side — a tall target like the nav rail leaves
+    // no room above or below, and the card must never cover what it points at.
+    if (vh - (box.top + box.height) - GAP >= height) return { top: box.top + box.height + GAP, left: centredLeft, width };
+    if (box.top - GAP >= height) return { top: box.top - height - GAP, left: centredLeft, width };
+    if (vw - (box.left + box.width) - GAP >= width) return { top: centredTop, left: box.left + box.width + GAP, width };
+    if (box.left - GAP >= width) return { top: centredTop, left: box.left - width - GAP, width };
+    return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width };
+  }, [box, height]);
 
   return (
     <div
-      ref={ref}
+      ref={(node) => {
+        inner.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      }}
       tabIndex={-1}
       style={style}
       className="absolute overflow-hidden rounded-[22px] border border-cream-200 bg-white text-ink-900 shadow-[0_40px_90px_-40px_rgba(7,23,13,0.75)] outline-none transition-[top,left] duration-[400ms] ease-[var(--ease-out-soft)] motion-safe:animate-[tour-pop_0.28s_var(--ease-out-soft)]"
