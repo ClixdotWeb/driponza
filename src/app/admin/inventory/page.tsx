@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Panel, PillTabs, Stat, Table } from "@/components/admin/ui";
-import { StockAdjustForm } from "@/components/admin/Forms";
+import { StockAdjustButton } from "@/components/admin/Forms";
 import { ImportForm, PurchaseForm, SupplierForm, WriteOffForm } from "@/components/admin/InventoryForms";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
@@ -32,6 +32,8 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
   const shown = variants
     .filter((v) => (sp.filter === "out" ? v.stock <= 0 : sp.filter === "low" ? v.stock > 0 && v.stock <= v.lowStockThreshold : true))
     .filter((v) => (q ? `${v.product.name} ${v.label} ${v.sku}`.toLowerCase().includes(q) : true));
+  const outCount = variants.filter((v) => v.stock <= 0).length;
+  const lowCount = variants.filter((v) => v.stock > 0 && v.stock <= v.lowStockThreshold).length;
   const stockValue = variants.reduce((n, v) => n + (v.costPrice ? toPaise(v.costPrice) * v.stock : 0), 0);
   const variantOpts = variants.map((v) => ({ id: v.id, label: `${v.product.name} · ${v.label} (${v.sku})` }));
 
@@ -53,30 +55,94 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
 
       {tab === "stock" && (
         <>
-          <form className="mb-3 flex flex-wrap gap-2 text-sm">
-            <input type="hidden" name="tab" value="stock" />
-            <input name="q" defaultValue={sp.q} placeholder="Search product or SKU" className="field-input w-64 py-2" aria-label="Search" />
-            <select name="filter" defaultValue={sp.filter ?? ""} className="field-input w-40 py-2" aria-label="Filter">
-              <option value="">All</option><option value="out">Out of stock</option><option value="low">Low stock</option>
-            </select>
-            <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
-          </form>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: "", label: "All", count: variants.length },
+                { key: "out", label: "Out of stock", count: outCount },
+                { key: "low", label: "Low stock", count: lowCount },
+              ].map((f) => {
+                const active = (sp.filter ?? "") === f.key;
+                return (
+                  <Link
+                    key={f.key || "all"}
+                    href={`/admin/inventory?tab=stock${f.key ? `&filter=${f.key}` : ""}${sp.q ? `&q=${encodeURIComponent(sp.q)}` : ""}`}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] transition",
+                      active ? "border-forest-800 bg-forest-800 font-medium text-ivory-50" : "border-cream-200 bg-white text-ink-700 hover:border-forest-800",
+                    )}
+                  >
+                    {f.label}
+                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] tabular-nums", active ? "bg-leaf-300 text-forest-950" : "bg-cream-100 text-ink-500")}>{f.count}</span>
+                  </Link>
+                );
+              })}
+            </div>
+            <form className="flex gap-2">
+              <input type="hidden" name="tab" value="stock" />
+              {sp.filter && <input type="hidden" name="filter" value={sp.filter} />}
+              <input name="q" defaultValue={sp.q} placeholder="Search product or SKU" className="field-input w-56 py-2" aria-label="Search" />
+              <button className="btn btn-sm btn-outline text-forest-800">Search</button>
+            </form>
+          </div>
+          <p className="mb-3 flex flex-wrap gap-x-5 gap-y-1 px-1 text-xs text-ink-500">
+            <span><strong className="font-medium text-ink-700">In stock</strong> — ready to sell right now</span>
+            <span><strong className="font-medium text-ink-700">Reserved</strong> — held by open orders, already taken out of stock</span>
+            <span><strong className="font-medium text-ink-700">Damaged</strong> — written off, not sellable</span>
+          </p>
+          {shown.length ? (
           <Table>
-            <thead><tr><th>Product</th><th>SKU</th><th>Available</th><th>Reserved</th><th>Damaged</th><th>Status</th>{canManage && <th>Adjust</th>}</tr></thead>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>In stock</th>
+                <th>Reserved</th>
+                <th>Damaged</th>
+                {canManage && <th className="text-right">Action</th>}
+              </tr>
+            </thead>
             <tbody>
-              {shown.map((v) => (
-                <tr key={v.id}>
-                  <td><Link href={`/admin/products/${v.product.id}`} className="font-medium hover:underline">{v.product.name}</Link><span className="block text-xs text-ink-500">{v.label}{!v.isActive || !v.product.isActive ? " · hidden" : ""}{v.costPrice ? ` · cost ${formatINR(toPaise(v.costPrice))}` : ""}</span></td>
-                  <td className="text-xs text-ink-500">{v.sku}</td>
-                  <td className="text-lg font-semibold tabular-nums">{v.stock}</td>
-                  <td className="tabular-nums text-ink-700">{reservedOf(v.id)}</td>
-                  <td className="tabular-nums text-ink-700">{v.damagedStock}</td>
-                  <td>{v.stock <= 0 ? <span className="text-xs font-medium text-danger-600">Out of stock</span> : v.stock <= v.lowStockThreshold ? <span className="text-xs font-medium text-warning-500">Low (≤ {v.lowStockThreshold})</span> : <span className="text-xs text-green-600">OK</span>}</td>
-                  {canManage && <td><StockAdjustForm variantId={v.id} stock={v.stock} /></td>}
-                </tr>
-              ))}
+              {shown.map((v) => {
+                const out = v.stock <= 0;
+                const low = !out && v.stock <= v.lowStockThreshold;
+                const res = reservedOf(v.id);
+                return (
+                  <tr key={v.id}>
+                    <td>
+                      <div className="flex items-start gap-3">
+                        <span aria-hidden="true" className={cn("mt-1 h-8 w-1 shrink-0 rounded-full", out ? "bg-danger-600" : low ? "bg-warning-500" : "bg-leaf-300")} />
+                        <div className="min-w-0">
+                          <Link href={`/admin/products/${v.product.id}`} className="font-medium text-forest-800 hover:underline">{v.product.name}</Link>
+                          <span className="mt-0.5 block text-xs text-ink-500">
+                            {v.label} · <span className="font-mono">{v.sku}</span>
+                            {(!v.isActive || !v.product.isActive) && " · hidden"}
+                            {v.costPrice ? ` · cost ${formatINR(toPaise(v.costPrice))}` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={cn("display block text-[1.7rem] leading-none tabular-nums", out ? "text-danger-600" : low ? "text-warning-500" : "text-forest-900")}>{v.stock}</span>
+                      <span className={cn("mt-1.5 inline-block rounded-full px-2 py-0.5 text-[11px]", out ? "bg-danger-600/10 text-danger-600" : low ? "bg-warning-500/15 text-[#8a5a00]" : "bg-botanical-100 text-green-600")}>
+                        {out ? "Out of stock" : low ? `Low · reorder at ${v.lowStockThreshold}` : "In stock"}
+                      </span>
+                    </td>
+                    <td className="tabular-nums">{res ? <span className="text-ink-700">{res}</span> : <span className="text-ink-500/50">—</span>}</td>
+                    <td className="tabular-nums">{v.damagedStock ? <span className="text-danger-600">{v.damagedStock}</span> : <span className="text-ink-500/50">—</span>}</td>
+                    {canManage && (
+                      <td className="text-right">
+                        <StockAdjustButton variantId={v.id} stock={v.stock} name={v.product.name} label={v.label} />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
+          ) : (
+            <Empty>No variants match this filter.</Empty>
+          )}
         </>
       )}
 
