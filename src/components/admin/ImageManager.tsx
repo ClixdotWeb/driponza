@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, ImageIcon, Trash2, Upload } from "lucide-react";
+import { FormSection } from "@/components/admin/ui";
 import { deleteImageAction, moveImageAction, updateImageAltAction } from "@/server/actions/admin-catalog";
 
 export function ImageManager({ productId, images }: { productId: string; images: { id: string; url: string; alt: string }[] }) {
@@ -28,17 +29,17 @@ export function ImageManager({ productId, images }: { productId: string; images:
   }
 
   return (
-    <section className="rounded-2xl border border-cream-200 bg-white p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-medium">Images</h2>
-          <p className="text-xs text-ink-500">JPEG, PNG, WebP or AVIF, up to 8 MB each. The first image is the main image.</p>
-        </div>
+    <FormSection
+      icon={<ImageIcon className="size-4" />}
+      title="Images"
+      description="JPEG, PNG, WebP or AVIF, up to 8 MB each. The first image is the main image."
+      actions={
         <label className="btn btn-primary btn-sm cursor-pointer">
           <Upload className="size-3.5" /> {busy ? "Uploading…" : "Upload images"}
           <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files)} />
         </label>
-      </div>
+      }
+    >
       {errors.length > 0 && <ul className="mb-4 rounded-xl bg-danger-600/10 p-3 text-sm text-danger-600">{errors.map((e) => <li key={e}>{e}</li>)}</ul>}
       {images.length ? (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -76,6 +77,6 @@ export function ImageManager({ productId, images }: { productId: string; images:
       ) : (
         <p className="rounded-xl border border-dashed border-cream-200 p-8 text-center text-sm text-ink-500">No images yet.</p>
       )}
-    </section>
+    </FormSection>
   );
 }

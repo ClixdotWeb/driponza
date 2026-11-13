@@ -79,8 +79,13 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
                   <td><span className={cn("rounded-full px-2.5 py-1 text-[11px]", p.isActive ? "bg-botanical-100 text-green-600" : "bg-cream-100 text-ink-500")}>{p.isActive ? "Active" : "Hidden"}</span></td>
                   <td>
                     <div className="flex items-center justify-end gap-2">
-                      <Link href={`/admin/products/${p.id}`} className="btn btn-outline btn-sm text-forest-800" aria-label={`Edit ${p.name}`}>
-                        <Pencil className="size-3.5" /> Edit
+                      <Link
+                        href={`/admin/products/${p.id}`}
+                        title="Edit"
+                        aria-label={`Edit ${p.name}`}
+                        className="inline-flex size-8 items-center justify-center rounded-full border border-cream-200 text-ink-500 transition hover:border-forest-800 hover:text-forest-800"
+                      >
+                        <Pencil className="size-3.5" />
                       </Link>
                       <Link
                         href={`/products/${p.slug}`}

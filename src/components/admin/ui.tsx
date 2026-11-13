@@ -30,6 +30,61 @@ export function Panel({ title, children, className, actions }: { title?: string;
   );
 }
 
+/**
+ * A titled block inside a long form. The icon tile + display title + hairline
+ * divider make each section readable at a glance while scrolling.
+ */
+export function FormSection({
+  icon,
+  step,
+  title,
+  description,
+  actions,
+  tone,
+  children,
+  className,
+}: {
+  icon?: React.ReactNode;
+  step?: number;
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  tone?: "warn";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("overflow-hidden rounded-[22px] border bg-white", tone === "warn" ? "border-warning-500/40" : "border-cream-200", className)}>
+      <header
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 md:px-6",
+          tone === "warn" ? "border-warning-500/30 bg-[#fdf6e7]" : "border-cream-200 bg-botanical-100/45",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          {(icon || step !== undefined) && (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-xl text-[13px] font-medium",
+                tone === "warn" ? "bg-warning-500/20 text-[#6b4700]" : "bg-forest-800 text-ivory-50",
+              )}
+            >
+              {icon ?? step}
+            </span>
+          )}
+          <div className="min-w-0">
+            <h2 className="display text-[1.35rem] leading-none text-forest-900">{title}</h2>
+            {description && <p className="mt-1.5 text-xs text-ink-500">{description}</p>}
+          </div>
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      </header>
+      <div className="p-5 md:p-6">{children}</div>
+    </section>
+  );
+}
+
 /** Soft botanical surface (the reference's right-hand detail panel). */
 export function Tray({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn("rounded-[22px] border border-botanical-100 bg-botanical-100/55 p-4 md:p-5 [&_h2]:font-[family-name:var(--font-display)] [&_h2]:text-[1.4rem] [&_h2]:font-normal [&_h2]:text-forest-900", className)}>{children}</div>;
