@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
+    "admin:list": "tsx scripts/list-admins.ts",
     "brand:assets": "node scripts/brand-assets.mjs",
     "postinstall": "prisma generate",
     "test": "vitest run",
