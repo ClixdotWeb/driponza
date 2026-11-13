@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { Bell, ExternalLink, LogOut, Settings } from "lucide-react";
+import { Bell, ExternalLink, LogOut, Settings, Store } from "lucide-react";
+import { SpiceBackdrop } from "@/components/home/SpiceBackdrop";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { NAV } from "@/components/admin/nav-items";
 import { Cardamom, Clove, StarAnise } from "@/components/spices/Spices";
@@ -25,9 +26,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-svh bg-ivory-50 lg:flex lg:gap-3 lg:p-3">
-      {/* Rail: a fixed 76px slot so the page never shifts; the green panel inside expands over the content on hover/focus. */}
-      <div className="relative z-40 print:hidden lg:w-[76px] lg:shrink-0">
-        <aside className="group/rail hero-surface grain relative isolate overflow-hidden text-ivory-50 lg:sticky lg:top-3 lg:flex lg:h-[calc(100svh-1.5rem)] lg:w-[76px] lg:flex-col lg:rounded-[28px] lg:py-5 lg:shadow-[0_30px_60px_-30px_rgba(7,23,13,0.6)] lg:transition-[width] lg:duration-300 lg:ease-[var(--ease-out-soft)] lg:hover:w-[244px] lg:focus-within:w-[244px]">
+      {/* Rail: expands on hover/focus and pushes the canvas (the canvas shrinks – nothing is covered). */}
+      <div className="group/rail relative z-40 print:hidden lg:w-[76px] lg:shrink-0 lg:transition-[width] lg:duration-300 lg:ease-[var(--ease-out-soft)] lg:hover:w-[244px] lg:focus-within:w-[244px]">
+        <aside className="hero-surface grain relative isolate overflow-hidden text-ivory-50 lg:sticky lg:top-3 lg:flex lg:h-[calc(100svh-1.5rem)] lg:w-full lg:flex-col lg:rounded-[28px] lg:py-5 lg:shadow-[0_30px_60px_-30px_rgba(7,23,13,0.6)]">
           <StarAnise uid="rail1" className="pointer-events-none absolute -bottom-6 -right-8 hidden w-28 opacity-25 lg:block" />
           <Cardamom uid="rail2" className="pointer-events-none absolute bottom-32 -left-3 hidden w-8 rotate-[30deg] opacity-30 lg:block" />
           <div className="relative flex items-center justify-between px-4 py-3 lg:mb-4 lg:block lg:px-[16px] lg:py-0">
@@ -58,13 +59,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
 
       {/* Canvas */}
-      <div className="min-w-0 flex-1 lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-cream-200 lg:bg-[#fbfaf5]">
+      <div className="relative isolate min-w-0 flex-1 lg:overflow-hidden lg:rounded-[28px] lg:border lg:border-cream-200 lg:bg-[#fbfaf5]">
+        {/* Floating spices behind the content (desktop), same style as the storefront sections */}
+        <div className="pointer-events-none absolute inset-0 -z-10 hidden lg:block">
+          <SpiceBackdrop
+            mobile={false}
+            items={[
+              { kind: "leaf", className: "-right-10 top-[22%] w-32 rotate-[28deg] opacity-[0.55]", depth: 0.5 },
+              { kind: "star", className: "right-[6%] top-[62%] w-16 opacity-[0.35]", depth: 0.8 },
+              { kind: "cardamom", className: "left-[38%] top-[48%] w-7 rotate-[40deg] opacity-[0.3]", depth: 0.6 },
+              { kind: "cinnamon", className: "-left-24 bottom-[8%] w-72 -rotate-[24deg] opacity-[0.28]", depth: 0.3 },
+              { kind: "pepper", className: "right-[30%] bottom-[12%] w-5 opacity-[0.35]", depth: 0.9 },
+              { kind: "clove", className: "left-[62%] top-[14%] w-6 -rotate-12 opacity-[0.3]", depth: 0.7 },
+            ]}
+          />
+        </div>
         <header className="hero-surface grain relative isolate flex items-center justify-end gap-2 overflow-hidden px-4 py-3 text-ivory-50 print:hidden md:px-8">
           <Clove uid="top1" className="pointer-events-none absolute left-[38%] top-1 hidden w-6 -rotate-[25deg] opacity-40 md:block" />
           <StarAnise uid="top2" className="pointer-events-none absolute -top-4 left-[58%] hidden w-14 opacity-30 md:block" />
-          <Link href="/" className="relative mr-auto inline-flex items-center gap-1.5 text-xs text-ivory-50/80 hover:text-ivory-50">
-            <span className="hidden font-[family-name:var(--font-script)] text-lg text-leaf-200 sm:inline">Nurture • Grow • Thrive</span>
-            <span className="sm:ml-3">View store</span> <ExternalLink className="size-3" />
+          <Link href="/" target="_blank" className="relative mr-auto inline-flex items-center gap-2 rounded-full bg-ivory-50/10 px-4 py-2 text-[13px] font-medium ring-1 ring-ivory-50/15 transition hover:bg-ivory-50 hover:text-forest-900">
+            <Store className="size-4" /> Open website <ExternalLink className="size-3 opacity-70" />
           </Link>
           {canVerify && (
             <Link href="/admin/payments" title="Payments awaiting verification" className="relative grid size-10 place-items-center rounded-full bg-ivory-50/10 ring-1 ring-ivory-50/15 hover:bg-ivory-50/20">
