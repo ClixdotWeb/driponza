@@ -113,39 +113,3 @@ export async function dashboardMetrics(range: { from: Date; to: Date }) {
 
 export const monthLabel = (key: string) => new Date(`${key}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
 
-/** Extra dashboard data: 14-day trend, action counts, and product photos for lists. All live queries. */
-export async function dashboardExtras(range: { from: Date; to: Date }) {
-  const now = new Date();
-  const start = istDayStart(now, -13);
-  const [tx, cancelRequests, returnsToReview, codDue, refundsPending, bestRows, variants] = await Promise.all([
-    db.paymentTransaction.findMany({ where: { createdAt: { gte: start } }, select: { kind: true, amountPaise: true, createdAt: true } }),
-    db.order.count({ where: { status: "CANCEL_REQUESTED" } }),
-    db.returnRequest.count({ where: { status: { in: ["REQUESTED", "RECEIVED"] } } }),
-    db.order.count({ where: { paymentMethod: "COD", status: "DELIVERED", paymentStatus: { in: ["UNPAID", "PARTIALLY_PAID"] } } }),
-    db.refund.count({ where: { status: "PENDING" } }),
-    db.orderItem.groupBy({
-      by: ["productId", "productName"],
-      where: { productId: { not: null }, order: { createdAt: { gte: range.from, lt: range.to }, status: { notIn: ["CANCELLED", "AWAITING_PAYMENT", "PAYMENT_VERIFICATION", "PENDING", "PAYMENT_FAILED"] } } },
-      _sum: { quantity: true, lineTotal: true },
-      orderBy: { _sum: { quantity: "desc" } },
-      take: 5,
-    }),
-    db.productVariant.findMany({
-      where: { isActive: true, product: { isActive: true } },
-      select: { id: true, label: true, stock: true, lowStockThreshold: true, product: { select: { id: true, name: true, images: { take: 1, orderBy: { position: "asc" }, select: { url: true } } } } },
-      orderBy: { stock: "asc" },
-    }),
-  ]);
-  const spark = Array.from({ length: 14 }, (_, i) => {
-    const from = istDayStart(now, i - 13).getTime();
-    const to = from + 864e5;
-    return tx.filter((t) => t.createdAt.getTime() >= from && t.createdAt.getTime() < to).reduce((n, t) => n + (t.kind === "REFUND" ? -t.amountPaise : t.amountPaise), 0);
-  });
-  const images = await db.productImage.findMany({ where: { productId: { in: bestRows.map((b) => b.productId!) } }, orderBy: { position: "asc" }, select: { productId: true, url: true } });
-  return {
-    spark,
-    attention: { cancelRequests, returnsToReview, codDue, refundsPending },
-    best: bestRows.map((b) => ({ id: b.productId!, name: b.productName, units: b._sum.quantity ?? 0, revenuePaise: Math.round(Number(b._sum.lineTotal ?? 0) * 100), image: images.find((i) => i.productId === b.productId)?.url ?? null })),
-    stockAlerts: variants.filter((v) => v.stock <= v.lowStockThreshold).slice(0, 6).map((v) => ({ id: v.id, productId: v.product.id, name: v.product.name, label: v.label, stock: v.stock, image: v.product.images[0]?.url ?? null })),
-  };
-}
