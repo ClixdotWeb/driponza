@@ -1,6 +1,6 @@
 # Development Progress
 
-Last updated: 2026-11-13 · Branch: `master` (local git) · Production (https://driponza.vercel.app) still runs the **pre-platform** version – see "Deployment status".
+Last updated: 2026-11-13 · Branch: `master` (local git) · Production: live (see "Deployment status").
 
 ## Phase status
 
@@ -23,7 +23,7 @@ Last updated: 2026-11-13 · Branch: `master` (local git) · Production (https://
 | 15 | Reports | ✅ Done | 16 reports + CSV |
 | 16 | Security & performance | ✅ Done | Security headers, no-store on personal pages, signature+re-encode uploads, CSRF origin check on upload route |
 | 17 | Testing | ✅ Done | Unit 28/28, e2e 9/9 (see below) |
-| 18 | Staging deployment | ⏳ Pending | Needs a Neon staging branch + owner go-ahead |
+| 18 | Staging deployment | ⏭ Skipped | Owner approved direct production deploy; tested on a local production build instead |
 | 19 | Production readiness review | ⏳ Pending | Blocked on owner configuration (below) |
 
 ## Tests executed (2026-11-13, local production build + local PostgreSQL)
@@ -58,7 +58,12 @@ Last updated: 2026-11-13 · Branch: `master` (local git) · Production (https://
 9. `CRON_SECRET` on Vercel.
 
 ## Deployment status
-Not deployed. Deploying requires running the two new migrations on the production Neon database (take a Neon branch backup first – see `docs/DEPLOYMENT_GUIDE.md`) and setting `CRON_SECRET`. Awaiting go-ahead.
+**Live on https://driponza.vercel.app since 2026-11-13** (deployment driponza-i7l2m6qsp).
+- Pre-migration data backup: `backups/prod-2026-11-13T05-43-54-332Z.json` (local, git-ignored; 8 products, 1 admin, 0 orders).
+- Production migrations applied: `platform_v2`, `invoice_sequence`; schema drift check empty; existing admin = Super Admin.
+- `CRON_SECRET` set; cron runs daily (Hobby plan limit) + opportunistic expiry from checkout/admin.
+- Live smoke test: health OK, storefront pages 200, cron/private media/exports refuse, /admin redirects to login, no browser errors.
+- Checkout shows "ordering opens soon" until bank details or COD are enabled in Admin → Settings.
 
 ## Known gaps / next work
 Product form extra fields & SEO, guest wishlist, recipes & content pages with revisions UI, product CSV import/duplicate, image zoom, notification template editor, Argon2id (bcrypt in use), staging environment.
