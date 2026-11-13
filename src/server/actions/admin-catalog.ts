@@ -257,9 +257,11 @@ export async function adjustStockAction(_: FormState, form: FormData): Promise<F
   const parsed = adjustSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: "Enter a valid quantity." };
   const { variantId, mode, quantity, reason, note } = parsed.data;
+  let slug = "";
   try {
     await db.$transaction(async (tx) => {
-      const v = await tx.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+      const v = await tx.productVariant.findUniqueOrThrow({ where: { id: variantId }, include: { product: { select: { slug: true } } } });
+      slug = v.product.slug;
       const next = mode === "set" ? quantity : mode === "add" ? v.stock + quantity : v.stock - quantity;
       if (next < 0) throw new Error(`Can't remove ${quantity} – only ${v.stock} in stock.`);
       const change = next - v.stock;
@@ -273,8 +275,11 @@ export async function adjustStockAction(_: FormState, form: FormData): Promise<F
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not update stock." };
   }
-  refreshStorefront();
+  // Only the pages that show this stock, not the whole site: revalidating the
+  // root layout threw away every cached storefront page on each adjustment.
   revalidatePath("/admin/inventory");
+  revalidatePath("/shop");
+  if (slug) revalidatePath(`/products/${slug}`);
   return { success: "Stock updated." };
 }
 

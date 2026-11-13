@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Panel, PillTabs, Stat, Table } from "@/components/admin/ui";
-import { StockAdjustButton } from "@/components/admin/Forms";
+import { StockRow } from "@/components/admin/StockRow";
 import { ImportForm, PurchaseForm, SupplierForm, WriteOffForm } from "@/components/admin/InventoryForms";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
@@ -103,41 +103,25 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
               </tr>
             </thead>
             <tbody>
-              {shown.map((v) => {
-                const out = v.stock <= 0;
-                const low = !out && v.stock <= v.lowStockThreshold;
-                const res = reservedOf(v.id);
-                return (
-                  <tr key={v.id}>
-                    <td>
-                      <div className="flex items-start gap-3">
-                        <span aria-hidden="true" className={cn("mt-1 h-8 w-1 shrink-0 rounded-full", out ? "bg-danger-600" : low ? "bg-warning-500" : "bg-leaf-300")} />
-                        <div className="min-w-0">
-                          <Link href={`/admin/products/${v.product.id}`} className="font-medium text-forest-800 hover:underline">{v.product.name}</Link>
-                          <span className="mt-0.5 block text-xs text-ink-500">
-                            {v.label} · <span className="font-mono">{v.sku}</span>
-                            {(!v.isActive || !v.product.isActive) && " · hidden"}
-                            {v.costPrice ? ` · cost ${formatINR(toPaise(v.costPrice))}` : ""}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={cn("display block text-[1.7rem] leading-none tabular-nums", out ? "text-danger-600" : low ? "text-warning-500" : "text-forest-900")}>{v.stock}</span>
-                      <span className={cn("mt-1.5 inline-block rounded-full px-2 py-0.5 text-[11px]", out ? "bg-danger-600/10 text-danger-600" : low ? "bg-warning-500/15 text-[#8a5a00]" : "bg-botanical-100 text-green-600")}>
-                        {out ? "Out of stock" : low ? `Low · reorder at ${v.lowStockThreshold}` : "In stock"}
-                      </span>
-                    </td>
-                    <td className="tabular-nums">{res ? <span className="text-ink-700">{res}</span> : <span className="text-ink-500/50">—</span>}</td>
-                    <td className="tabular-nums">{v.damagedStock ? <span className="text-danger-600">{v.damagedStock}</span> : <span className="text-ink-500/50">—</span>}</td>
-                    {canManage && (
-                      <td className="text-right">
-                        <StockAdjustButton variantId={v.id} name={v.product.name} label={v.label} />
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
+              {shown.map((v) => (
+                <StockRow
+                  key={v.id}
+                  canManage={canManage}
+                  row={{
+                    variantId: v.id,
+                    productId: v.product.id,
+                    name: v.product.name,
+                    label: v.label,
+                    sku: v.sku,
+                    stock: v.stock,
+                    reserved: reservedOf(v.id),
+                    damaged: v.damagedStock,
+                    lowAt: v.lowStockThreshold,
+                    hidden: !v.isActive || !v.product.isActive,
+                    cost: v.costPrice ? formatINR(toPaise(v.costPrice)) : null,
+                  }}
+                />
+              ))}
             </tbody>
           </Table>
           ) : (

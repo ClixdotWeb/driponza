@@ -13,14 +13,14 @@ import {
   saveCouponAction,
 } from "@/server/actions/admin-catalog";
 
-/** Generic wrapper: a server action form that refreshes the page on success. */
+/**
+ * Wrapper for admin forms. These actions all call revalidatePath, so Next
+ * already ships the re-rendered page in the action's own response — calling
+ * router.refresh() here as well would make every save cost two server
+ * round trips instead of one.
+ */
 function useRefreshingAction(fn: (s: FormState, f: FormData) => Promise<FormState>) {
-  const router = useRouter();
-  const [state, action] = useActionState(fn, null);
-  useEffect(() => {
-    if (state?.success) router.refresh();
-  }, [state, router]);
-  return [state, action] as const;
+  return useActionState(fn, null);
 }
 
 type Cat = { id: string; name: string; slug: string; description: string | null; position: number; isActive: boolean; count: number };
@@ -69,18 +69,43 @@ function DeleteCategory({ id, count }: { id: string; count: number }) {
  * instead of repeating form controls on every line. Restocking only: every
  * change is logged as a RESTOCK movement.
  */
-export function StockAdjustButton({ variantId, name, label }: { variantId: string; name: string; label: string }) {
+export function StockAdjustButton({
+  variantId,
+  name,
+  label,
+  onAdd,
+  onFail,
+}: {
+  variantId: string;
+  name: string;
+  label: string;
+  /** Called the moment a valid quantity is submitted, so the row can update at once. */
+  onAdd?: (quantity: number) => void;
+  /** Called if the server rejected it, so the row can go back to the real number. */
+  onFail?: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [state, action] = useRefreshingAction(adjustStockAction);
   const [qty, setQty] = useState("");
 
   useEffect(() => {
-    if (state?.success) dialog.current?.close();
-  }, [state]);
+    if (state?.error) {
+      onFail?.();
+      if (!dialog.current?.open) dialog.current?.showModal();
+    }
+  }, [state, onFail]);
 
   function open() {
     setQty("");
     dialog.current?.showModal();
+  }
+
+  /** Runs just before the form submits: show the result immediately and get out of the way. */
+  function handOff() {
+    const n = Number(qty);
+    if (!Number.isFinite(n) || n < 1) return;
+    onAdd?.(n);
+    dialog.current?.close();
   }
 
   return (
@@ -136,7 +161,7 @@ export function StockAdjustButton({ variantId, name, label }: { variantId: strin
 
           <div className="flex justify-end gap-2 border-t border-cream-200 pt-4">
             <button type="button" className="btn btn-outline btn-sm text-ink-700" onClick={() => dialog.current?.close()}>Cancel</button>
-            <SubmitButton className="px-6 py-2.5" pendingText="Saving…">Add to stock</SubmitButton>
+            <button type="submit" onClick={handOff} className="btn btn-primary px-6 py-2.5">Add to stock</button>
           </div>
         </ActionForm>
       </dialog>
