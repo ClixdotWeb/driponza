@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
 import { tourFor, type TourStep } from "@/components/admin/tour/steps";
@@ -39,7 +40,12 @@ export function AdminTour() {
   const [running, setRunning] = useState(false);
   const [index, setIndex] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
+  const [mounted, setMounted] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // The overlay is portalled to <body>: the admin header it sits in has `isolate`
+  // and `overflow-hidden`, which would otherwise paint it beneath the page.
+  useEffect(() => setMounted(true), []);
 
   // Offer the tour once per page, the first time this browser sees it.
   useEffect(() => {
@@ -149,8 +155,8 @@ export function AdminTour() {
         <HelpCircle className="size-4" />
       </button>
 
-      {running && step && (
-        <div className="fixed inset-0 z-[90] print:hidden" role="dialog" aria-modal="true" aria-label={tour.label}>
+      {running && step && mounted && createPortal(
+        <div className="fixed inset-0 z-[200] print:hidden" role="dialog" aria-modal="true" aria-label={tour.label}>
           {/* The dim. The lit area is a hole punched with a very large ring shadow. */}
           <div
             aria-hidden="true"
@@ -176,7 +182,8 @@ export function AdminTour() {
             onBack={back}
             onFinish={finish}
           />
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
