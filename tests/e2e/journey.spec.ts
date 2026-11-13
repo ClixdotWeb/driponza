@@ -1,9 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 // Requires: local test DB prepared with `npx tsx tests/e2e/setup-db.ts`, app running at baseURL.
 const ADMIN = { email: "e2e-admin@example.test", password: "E2e-admin-pass-123" };
 const SUPPORT = { email: "e2e-support@example.test", password: "E2e-admin-pass-123" };
-const stamp = Date.now();
+// Stable for the whole run (written by setup-db.ts) so a worker restart after a failure keeps the same identities.
+const stamp = fs.readFileSync(path.join(__dirname, ".run-id"), "utf8").trim();
+const FIXED_CUSTOMER = { email: "e2e-customer@example.test", password: "Customer-pass-1" };
 const CUSTOMER = { name: "E2E Customer", email: `e2e-${stamp}@example.test`, password: "Customer-pass-1" };
 let orderNumber = "";
 
@@ -12,7 +16,7 @@ async function login(page: Page, who: { email: string; password: string }, next 
   await page.locator("main input[name=email]").fill(who.email);
   await page.locator("main input[name=password]").fill(who.password);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { waitUntil: "commit" });
 }
 
 async function addToCart(page: Page, slug: string, qty = 1) {
@@ -89,11 +93,12 @@ test.describe.serial("customer → admin order lifecycle (bank transfer)", () =>
     await page.goto("/admin/payments");
     const card = page.locator("div").filter({ hasText: `UTR UTR${stamp}` }).filter({ has: page.getByRole("button", { name: "Verify payment" }) }).last();
     await card.getByRole("button", { name: "Verify payment" }).click();
-    await expect(page.getByText("Payment verified.")).toBeVisible();
+    // Verified transfers leave the queue (the page refreshes on success).
+    await expect(page.getByText(`UTR UTR${stamp}`)).toHaveCount(0);
 
     await page.goto("/admin/orders?q=" + orderNumber);
     await page.getByRole("link", { name: orderNumber }).click();
-    await expect(page.getByText("Confirmed").first()).toBeVisible();
+    await expect(page.locator("label").filter({ hasText: /^Packed$/ })).toBeVisible();
 
     const move = async (label: string) => {
       await page.locator("label").filter({ hasText: new RegExp(`^${label}$`) }).click();
@@ -128,20 +133,21 @@ test.describe.serial("customer → admin order lifecycle (bank transfer)", () =>
     await page.getByLabel(/Quantity of .* to return/).first().selectOption("1");
     await page.getByLabel("Reason").selectOption("Damaged or leaking package");
     await page.getByRole("button", { name: "Request return" }).click();
-    await expect(page.getByText(/Return requested/)).toBeVisible();
+    await expect(page.getByText(/Return requested|return request has been received/)).toBeVisible();
   });
 
   test("admin inspects the return; resellable stock goes back", async ({ page }) => {
     await login(page, ADMIN, "/admin/returns");
     await page.goto("/admin/returns");
     await page.getByRole("link", { name: orderNumber }).click();
+    // Each step's form is replaced by the next step once the server accepts it.
     await page.getByRole("button", { name: "Approve return" }).click();
-    await expect(page.getByText("Return updated.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Goods received" })).toBeVisible();
     await page.getByRole("button", { name: "Goods received" }).click();
-    await expect(page.getByText("Return updated.")).toBeVisible();
+    await expect(page.getByLabel("Resellable").first()).toBeVisible();
     await page.getByLabel("Resellable").first().check();
     await page.getByRole("button", { name: /Save inspection/ }).click();
-    await expect(page.getByText("Return updated.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close without refund" })).toBeVisible();
     await page.goto("/admin/inventory?tab=history");
     await expect(page.getByText("Return (resellable)").first()).toBeVisible();
   });
@@ -171,7 +177,7 @@ test.describe("guest checkout with COD", () => {
 
 test.describe("access control", () => {
   test("customers can't open admin or other people's orders; private media is hidden", async ({ page, request }) => {
-    await login(page, CUSTOMER);
+    await login(page, FIXED_CUSTOMER);
     await page.goto("/admin");
     await expect(page).not.toHaveURL(/\/admin/);
     const other = await page.request.get("/account/orders/DZ-000000-XXXXX");

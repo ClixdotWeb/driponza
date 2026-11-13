@@ -43,7 +43,7 @@ export function Footer({ settings, categories }: { settings: Settings; categorie
               <li><Link href="/our-story" className="link-underline hover:text-green-600">Our story</Link></li>
               <li><Link href="/contact" className="link-underline hover:text-green-600">Contact</Link></li>
               <li><Link href="/account" className="link-underline hover:text-green-600">My account</Link></li>
-              <li><Link href="/account/orders" className="link-underline hover:text-green-600">Track an order</Link></li>
+              <li><Link href="/track" className="link-underline hover:text-green-600">Track an order</Link></li>
             </ul>
             <h3 className="eyebrow mt-8 text-green-600">Policies</h3>
             <ul className="mt-4 space-y-2.5 text-sm text-forest-800/80">

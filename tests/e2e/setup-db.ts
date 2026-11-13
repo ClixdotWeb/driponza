@@ -3,6 +3,8 @@
  * Usage: npx tsx tests/e2e/setup-db.ts   (after `npm run db:deploy` and `npm run db:seed`)
  */
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../src/generated/prisma/client";
@@ -42,7 +44,9 @@ async function main() {
   const hash = await bcrypt.hash("E2e-admin-pass-123", 12);
   await db.user.upsert({ where: { email: "e2e-admin@example.test" }, create: { email: "e2e-admin@example.test", name: "E2E Admin", passwordHash: hash, role: "ADMIN", staffRoleId: "role_super_admin" }, update: { passwordHash: hash, role: "ADMIN", staffRoleId: "role_super_admin", isActive: true } });
   await db.user.upsert({ where: { email: "e2e-support@example.test" }, create: { email: "e2e-support@example.test", name: "E2E Support", passwordHash: hash, role: "ADMIN", staffRoleId: "role_customer_support" }, update: { passwordHash: hash, role: "ADMIN", staffRoleId: "role_customer_support", isActive: true } });
+  await db.user.upsert({ where: { email: "e2e-customer@example.test" }, create: { email: "e2e-customer@example.test", name: "E2E Fixed Customer", passwordHash: await bcrypt.hash("Customer-pass-1", 12) }, update: { isActive: true, role: "CUSTOMER", staffRoleId: null } });
   await db.rateLimitBucket.deleteMany({});
+  fs.writeFileSync(path.join(__dirname, ".run-id"), String(Date.now()));
   console.log("e2e test data ready");
 }
 

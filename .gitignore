@@ -16,3 +16,6 @@ npm-debug.log*
 .vercel
 .env*
 !.env.example
+tests/e2e/.run-id
+test-results
+playwright-report

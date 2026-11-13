@@ -8,6 +8,14 @@ import { getSettings } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Request a return", robots: { index: false } };
 
+const RETURN_STATUS_TEXT: Record<string, string> = {
+  REQUESTED: "Your return request has been received and is awaiting review.",
+  APPROVED: "Your return has been approved – we'll share pickup or drop-off instructions.",
+  RECEIVED: "We've received the returned items and are inspecting them.",
+  INSPECTED: "Inspection is complete; any refund is being processed.",
+  REFUNDED: "Your refund for this return has been sent.",
+};
+
 export default async function ReturnRequestPage({ params }: { params: Promise<{ number: string }> }) {
   const { number } = await params;
   const user = await requireUser(`/account/orders/${number}/return`);
@@ -28,7 +36,7 @@ export default async function ReturnRequestPage({ params }: { params: Promise<{ 
       </p>
       <div className="mt-6 max-w-xl">
         {open ? (
-          <p className="rounded-2xl bg-botanical-100 p-4 text-sm">Your return request is {order.returns[0].status.toLowerCase()}. We&apos;ll email you with updates.</p>
+          <p className="rounded-2xl bg-botanical-100 p-4 text-sm">{RETURN_STATUS_TEXT[order.returns[0].status] ?? "We're processing your return."} We&apos;ll email you with updates.</p>
         ) : order.status !== "DELIVERED" ? (
           <p className="rounded-2xl bg-cream-100 p-4 text-sm">Returns can be requested once the order has been delivered.</p>
         ) : (
