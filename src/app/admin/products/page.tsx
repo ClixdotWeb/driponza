@@ -33,9 +33,9 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
       <AdminHeader
         title="Products"
         description="Add, edit and organise the catalogue. Changes appear on the store immediately."
-        actions={<Link href="/admin/products/new" className="btn btn-primary"><Plus className="size-4" /> New product</Link>}
+        actions={<Link href="/admin/products/new" data-tour="new-product" className="btn btn-primary"><Plus className="size-4" /> New product</Link>}
       />
-      <form className="mb-4 flex flex-wrap gap-2">
+      <form data-tour="product-filters" className="mb-4 flex flex-wrap gap-2">
         <input name="q" defaultValue={sp.q} placeholder="Search name or SKU" className="field-input w-56 py-2" />
         <select name="category" defaultValue={sp.category ?? ""} className="field-input w-48 py-2">
           <option value="">All categories</option>
@@ -50,7 +50,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
         <button className="btn btn-outline btn-sm text-forest-800">Filter</button>
       </form>
       {products.length ? (
-        <Table>
+        <Table tour="product-table">
           <thead><tr><th>Product</th><th>Category</th><th>Variants</th><th>Price</th><th>Stock</th><th>Status</th><th className="text-right">Actions</th></tr></thead>
           <tbody>
             {products.map((p) => {
@@ -78,7 +78,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
                   <td className={cn("tabular-nums", stock === 0 && "text-danger-600")}>{stock}</td>
                   <td><span className={cn("rounded-full px-2.5 py-1 text-[11px]", p.isActive ? "bg-botanical-100 text-green-600" : "bg-cream-100 text-ink-500")}>{p.isActive ? "Active" : "Hidden"}</span></td>
                   <td>
-                    <div className="flex items-center justify-end gap-2">
+                    <div data-tour="product-actions" className="flex items-center justify-end gap-2">
                       <Link
                         href={`/admin/products/${p.id}`}
                         title="Edit"

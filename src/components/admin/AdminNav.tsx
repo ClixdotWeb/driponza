@@ -13,7 +13,7 @@ export function AdminNav({ allowed }: { allowed: string[] }) {
   const path = usePathname();
   const items = NAV.filter((i) => allowed.includes(i.href));
   return (
-    <nav aria-label="Admin" className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 lg:flex-1 lg:flex-col lg:gap-1 lg:overflow-y-auto lg:overflow-x-hidden lg:px-3 lg:pb-0">
+    <nav aria-label="Admin" data-tour="nav" className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 lg:flex-1 lg:flex-col lg:gap-1 lg:overflow-y-auto lg:overflow-x-hidden lg:px-3 lg:pb-0">
       {items.map(({ href, label, icon: Icon }) => {
         const active = href === "/admin" ? path === "/admin" : path.startsWith(href);
         return (

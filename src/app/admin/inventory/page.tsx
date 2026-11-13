@@ -40,7 +40,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <AdminHeader title="Inventory" description="Orders reserve stock the moment they are placed; cancelled or expired unpaid orders put it back. Every change is in the history." />
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div data-tour="inv-stats" className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="Variants" value={variants.length} />
         <Stat label="Out of stock" value={variants.filter((v) => v.stock <= 0).length} tone={variants.some((v) => v.stock <= 0) ? "warn" : undefined} href="/admin/inventory?filter=out" />
         <Stat label="Reserved by open orders" value={reserved.reduce((n, r) => n + (r._sum.quantity ?? 0), 0)} />
@@ -48,6 +48,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
         <Stat label="Stock value (at cost)" value={formatINR(stockValue)} hint="Variants with a cost price" />
       </div>
       <PillTabs
+        tour="inv-tabs"
         items={[
           ["stock", "Stock"], ["batches", "Batches & expiry"], ["purchases", "Purchases"], ["suppliers", "Suppliers"], ["history", "History"], ...(canManage ? [["import", "Bulk import"]] : []),
         ].map(([k, l]) => ({ label: l, href: `/admin/inventory?tab=${k}`, active: tab === k }))}
@@ -56,7 +57,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
       {tab === "stock" && (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+            <div data-tour="inv-filters" className="flex flex-wrap gap-2">
               {[
                 { key: "", label: "All", count: variants.length },
                 { key: "out", label: "Out of stock", count: outCount },
@@ -92,7 +93,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
             <span><strong className="font-medium text-ink-700">Damaged</strong> — written off, not sellable</span>
           </p>
           {shown.length ? (
-          <Table>
+          <Table tour="inv-table">
             <thead>
               <tr>
                 <th>Product</th>

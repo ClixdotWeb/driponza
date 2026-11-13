@@ -65,7 +65,7 @@ export default async function AdminOrders({ searchParams }: { searchParams: Prom
   const canBulk = hasPermission(staff.permissions, "orders.update");
 
   const table = (
-    <Table>
+    <Table tour="order-table">
       <thead>
         <tr>
           {canBulk && <th className="w-8"><span className="sr-only">Select</span></th>}
@@ -99,7 +99,7 @@ export default async function AdminOrders({ searchParams }: { searchParams: Prom
         description={`${total} order(s) in this view`}
         actions={<a href={`/api/admin/reports/export?${exportParams}`} className="btn btn-outline btn-sm text-forest-800"><Download className="size-3.5" /> Export CSV</a>}
       />
-      <PillTabs items={counts.map(([k, n]) => ({ label: TABS[k].label, count: n, href: qs({ tab: k, page: undefined }), active: k === tab }))} />
+      <PillTabs tour="order-tabs" items={counts.map(([k, n]) => ({ label: TABS[k].label, count: n, href: qs({ tab: k, page: undefined }), active: k === tab }))} />
       <form className="mb-4 flex flex-wrap gap-2">
         <input type="hidden" name="tab" value={tab} />
         <input name="q" defaultValue={q} placeholder="Order, invoice, name, email, phone, UTR, AWB" className="field-input w-80 py-2" aria-label="Search orders" />

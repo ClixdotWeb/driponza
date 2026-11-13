@@ -103,9 +103,9 @@ export function Stat({ label, value, hint, href, tone }: { label: string; value:
 }
 
 /** Filter pills with count chips. */
-export function PillTabs({ items }: { items: Array<{ label: string; href: string; count?: number; active: boolean }> }) {
+export function PillTabs({ items, tour }: { items: Array<{ label: string; href: string; count?: number; active: boolean }>; tour?: string }) {
   return (
-    <div className="no-scrollbar -mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1">
+    <div data-tour={tour} className="no-scrollbar -mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1">
       {items.map((t) => (
         <Link
           key={t.href}
@@ -126,9 +126,9 @@ export function PillTabs({ items }: { items: Array<{ label: string; href: string
   );
 }
 
-export function Table({ children }: { children: React.ReactNode }) {
+export function Table({ children, tour }: { children: React.ReactNode; tour?: string }) {
   return (
-    <div className="overflow-x-auto rounded-[22px] border border-cream-200 bg-white">
+    <div data-tour={tour} className="overflow-x-auto rounded-[22px] border border-cream-200 bg-white">
       <table className="w-full min-w-[640px] text-left text-sm [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3 [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.12em] [&_th]:text-ink-500 [&_thead]:border-b [&_thead]:border-cream-200 [&_thead]:bg-botanical-100/40 [&_tbody_tr]:border-b [&_tbody_tr]:border-cream-100 [&_tbody_tr:last-child]:border-0 [&_tbody_tr:hover]:bg-ivory-50">
         {children}
       </table>

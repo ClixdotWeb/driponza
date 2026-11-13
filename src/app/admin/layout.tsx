@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Bell, ExternalLink, LogOut, Settings, Store } from "lucide-react";
 import { SpiceBackdrop } from "@/components/home/SpiceBackdrop";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminTour } from "@/components/admin/tour/AdminTour";
 import { NAV } from "@/components/admin/nav-items";
 import { Cardamom, Clove, StarAnise } from "@/components/spices/Spices";
 import { db } from "@/lib/db";
@@ -77,9 +78,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <header className="hero-surface grain relative isolate flex items-center justify-end gap-2 overflow-hidden px-4 py-3 text-ivory-50 print:hidden md:px-8">
           <Clove uid="top1" className="pointer-events-none absolute left-[38%] top-1 hidden w-6 -rotate-[25deg] opacity-40 md:block" />
           <StarAnise uid="top2" className="pointer-events-none absolute -top-4 left-[58%] hidden w-14 opacity-30 md:block" />
-          <Link href="/" target="_blank" className="relative mr-auto inline-flex items-center gap-2 rounded-full bg-ivory-50/10 px-4 py-2 text-[13px] font-medium ring-1 ring-ivory-50/15 transition hover:bg-ivory-50 hover:text-forest-900">
+          <Link href="/" target="_blank" data-tour="view-site" className="relative mr-auto inline-flex items-center gap-2 rounded-full bg-ivory-50/10 px-4 py-2 text-[13px] font-medium ring-1 ring-ivory-50/15 transition hover:bg-ivory-50 hover:text-forest-900">
             <Store className="size-4" /> Open website <ExternalLink className="size-3 opacity-70" />
           </Link>
+          <AdminTour />
           {canVerify && (
             <Link href="/admin/payments" title="Payments awaiting verification" className="relative grid size-10 place-items-center rounded-full bg-ivory-50/10 ring-1 ring-ivory-50/15 hover:bg-ivory-50/20">
               <Bell className="size-4" />

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/ui/Form";
+import { MultiSelect } from "@/components/admin/MultiSelect";
 import type { FormState } from "@/server/actions/auth";
 import {
   adjustStockAction,
@@ -110,7 +111,8 @@ export function StockAdjustButton({
 
   return (
     <>
-      <button type="button" onClick={open} className="btn btn-outline btn-sm whitespace-nowrap text-forest-800">
+      {/* data-tour: the guided tour spotlights the first of these. */}
+      <button type="button" onClick={open} data-tour="inv-adjust" className="btn btn-outline btn-sm whitespace-nowrap text-forest-800">
         <Plus className="size-3.5" /> Add stock
       </button>
       <dialog
@@ -192,10 +194,13 @@ export type CouponScope = { products: Array<{ id: string; name: string }>; categ
 function ScopePicker({ label, name, options, selected }: { label: string; name: string; options: Array<{ id: string; name: string }>; selected: string[] }) {
   return (
     <div className="sm:col-span-2">
-      <label className="field-label">{label}</label>
-      <select multiple name={name} defaultValue={selected} aria-label={label} className="field-input h-24 py-1 text-[13px]">
-        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-      </select>
+      <MultiSelect
+        name={name}
+        label={label}
+        options={options.map((o) => ({ value: o.id, label: o.name }))}
+        defaultValue={selected}
+        placeholder="Everything — no restriction"
+      />
     </div>
   );
 }

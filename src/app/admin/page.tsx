@@ -157,7 +157,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
           <Link href={`/admin?range=${range}`} className="inline-flex items-center gap-2 rounded-full border border-cream-200 bg-white px-4 py-2.5 text-[13px] font-medium text-forest-900 hover:border-forest-800">
             <RefreshCw className="size-3.5" /> Refresh data
           </Link>
-          <nav aria-label="Date range" className="flex rounded-full border border-cream-200 bg-white p-1 text-[13px]">
+          <nav aria-label="Date range" data-tour="range" className="flex rounded-full border border-cream-200 bg-white p-1 text-[13px]">
             {RANGES.map((r) => (
               <Link key={r.key} href={`/admin?range=${r.key}`} aria-current={r.key === range ? "page" : undefined} className={cn("rounded-full px-4 py-1.5 font-medium transition", r.key === range ? "bg-forest-900 text-ivory-50" : "text-ink-700 hover:text-forest-900")}>
                 {r.label}
@@ -167,7 +167,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         </div>
       </div>
 
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-tour="kpis" className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c, i) =>
           i === 0 ? (
             <Link key={c.title} href={c.href} className="hero-surface grain group relative isolate overflow-hidden rounded-[22px] p-6 text-ivory-50 shadow-[0_24px_44px_-26px_rgba(7,23,13,0.7)] transition hover:-translate-y-0.5">

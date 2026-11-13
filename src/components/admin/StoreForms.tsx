@@ -3,18 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import { ActionForm, FormMessage, SubmitButton } from "@/components/ui/Form";
+import { MultiSelect } from "@/components/admin/MultiSelect";
 import { deleteRoleAction, deleteZoneAction, inviteStaffAction, moderateReviewAction, saveRoleAction, saveZoneAction, updateTicketAction } from "@/server/actions/admin-store";
 import type { FormState } from "@/server/actions/auth";
 
+/** These actions revalidate on the server, so no router.refresh() — that would cost a second round trip. */
 function useRefreshing(fn: (s: FormState, f: FormData) => Promise<FormState>, onDone?: () => void) {
-  const router = useRouter();
   const [state, action] = useActionState(fn, null);
   useEffect(() => {
-    if (state?.success) {
-      router.refresh();
-      onDone?.();
-    }
-  }, [state, router, onDone]);
+    if (state?.success) onDone?.();
+  }, [state, onDone]);
   return [state, action] as const;
 }
 
@@ -38,10 +36,13 @@ export function ZoneForm({ zone, states, onDone }: { zone?: Zone; states: string
         {fe.pincodePrefixes && <p className="field-error">{fe.pincodePrefixes}</p>}
       </div>
       <div className="md:col-span-2">
-        <label className="field-label">…or whole states</label>
-        <select name="states" multiple defaultValue={zone?.states} className="field-input h-24 py-1 text-[13px]" aria-label="States">
-          {states.map((s) => <option key={s}>{s}</option>)}
-        </select>
+        <MultiSelect
+          name="states"
+          label="…or whole states"
+          options={states.map((s) => ({ value: s, label: s }))}
+          defaultValue={zone?.states ?? []}
+          placeholder="No states — match by PIN only"
+        />
       </div>
       <div><label className="field-label">Delivery days (min)</label><input name="minDays" type="number" min={0} defaultValue={zone?.minDays ?? 3} className="field-input py-2" aria-label="Min days" /></div>
       <div><label className="field-label">Delivery days (max)</label><input name="maxDays" type="number" min={0} defaultValue={zone?.maxDays ?? 7} className="field-input py-2" aria-label="Max days" />{fe.maxDays && <p className="field-error">{fe.maxDays}</p>}</div>
