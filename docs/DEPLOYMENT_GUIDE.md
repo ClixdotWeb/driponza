@@ -23,7 +23,7 @@ Create a Neon branch `staging` and a Vercel Preview deployment with `DATABASE_UR
 Neon keeps point-in-time history (plan-dependent retention). Also take a weekly logical dump: `pg_dump --format=custom "$DIRECT_DATABASE_URL" > driponza-$(date +%F).dump`. Test a restore into a scratch branch monthly: `pg_restore --clean --no-owner -d "$SCRATCH_URL" file.dump`.
 
 ## Cron
-`vercel.json` schedules `/api/cron/expire-orders` hourly. It releases stock held by unpaid bank-transfer orders after the configured hold period. Vercel sends `Authorization: Bearer $CRON_SECRET`.
+`vercel.json` schedules `/api/cron/expire-orders` daily at 02:00 IST (Vercel Hobby allows only daily crons); expiry also runs opportunistically, at most every 10 minutes, when checkout or the admin panel is opened. It releases stock held by unpaid bank-transfer orders after the configured hold period. Vercel sends `Authorization: Bearer $CRON_SECRET`.
 
 ## Coolify alternative
 The `Dockerfile` builds a standalone Next.js image. In Coolify:

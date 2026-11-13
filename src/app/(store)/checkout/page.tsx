@@ -5,13 +5,14 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings";
 import { getCart } from "@/server/cart";
-import { quoteCart } from "@/server/orders";
+import { maybeExpireUnpaidOrders, quoteCart } from "@/server/orders";
 import { INDIAN_STATES } from "@/server/validation";
 
 export const metadata: Metadata = { title: "Checkout", robots: { index: false } };
 
 export default async function CheckoutPage() {
   const user = await getCurrentUser(); // guests may check out
+  await maybeExpireUnpaidOrders(); // frees stock held by expired unpaid orders
   const cart = await getCart();
   if (!cart.lines.length) redirect("/cart");
 

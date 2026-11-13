@@ -19,3 +19,4 @@ npm-debug.log*
 tests/e2e/.run-id
 test-results
 playwright-report
+backups/

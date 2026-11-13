@@ -690,6 +690,21 @@ async function applyRefundState(tx: Tx, orderId: string) {
 
 // ─────────────────────────── Expiry (cron) ───────────────────────────
 
+let lastExpiryRun = 0;
+/**
+ * Opportunistic expiry (the Vercel Hobby cron only runs daily): at most once every 10 minutes per instance,
+ * triggered from checkout and the admin panel. Never throws.
+ */
+export async function maybeExpireUnpaidOrders() {
+  if (Date.now() - lastExpiryRun < 10 * 60_000) return;
+  lastExpiryRun = Date.now();
+  try {
+    await expireUnpaidOrders();
+  } catch (err) {
+    console.error("[expire:opportunistic]", err);
+  }
+}
+
 /** Cancels unpaid bank-transfer orders past their hold time and releases their stock. */
 export async function expireUnpaidOrders() {
   const due = await db.order.findMany({
