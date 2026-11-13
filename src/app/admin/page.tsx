@@ -1,221 +1,174 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import { Panel, Stat, Table, Tray } from "@/components/admin/ui";
-import { Cardamom, Cinnamon, StarAnise } from "@/components/spices/Spices";
-import { RevenueChart } from "@/components/admin/RevenueChart";
-import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadge";
+import { IndianRupee, Layers, RefreshCw, ShoppingBag, TrendingUp, Users } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/session";
 import { hasPermission, PERMISSIONS, type Permission } from "@/lib/permissions";
 import { formatINR, toPaise } from "@/lib/money";
-import { bankTransferReady, getSettings } from "@/lib/settings";
-import { storageMode } from "@/lib/storage";
-import { emailConfigured } from "@/lib/email";
-import { formatDate } from "@/lib/utils";
-import { dashboardMetrics, istDayStart, monthlyRevenue } from "@/server/reports";
+import { cn } from "@/lib/utils";
+import { istDayStart } from "@/server/reports";
 
-const RANGES = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 } as const;
+export const metadata = { title: "Dashboard" };
 
-export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string; denied?: string }> }) {
+const RANGES = [
+  { key: "today", label: "Today" },
+  { key: "7d", label: "7D" },
+  { key: "30d", label: "30D" },
+  { key: "all", label: "All time" },
+] as const;
+type RangeKey = (typeof RANGES)[number]["key"];
+
+const IST_MS = 5.5 * 3600_000;
+const LIVE = { notIn: ["CANCELLED", "PAYMENT_FAILED"] } as { notIn: Array<"CANCELLED" | "PAYMENT_FAILED"> };
+
+/** Bucket boundaries for the charts: hours for today, days for 7/30 days, months for all time. */
+function buckets(range: RangeKey, now: Date, first: Date | null) {
+  if (range === "today") {
+    const start = istDayStart(now).getTime();
+    return Array.from({ length: 24 }, (_, h) => ({ from: start + h * 3600_000, to: start + (h + 1) * 3600_000, label: h % 6 === 0 ? `${h}:00` : "" }));
+  }
+  if (range === "all") {
+    const ist = new Date(now.getTime() + IST_MS);
+    const firstIst = new Date((first ?? now).getTime() + IST_MS);
+    const months = Math.min(24, Math.max(1, (ist.getUTCFullYear() - firstIst.getUTCFullYear()) * 12 + ist.getUTCMonth() - firstIst.getUTCMonth() + 1));
+    return Array.from({ length: months }, (_, i) => {
+      const y = ist.getUTCFullYear();
+      const mo = ist.getUTCMonth() - (months - 1 - i);
+      const from = Date.UTC(y, mo, 1) - IST_MS;
+      const to = Date.UTC(y, mo + 1, 1) - IST_MS;
+      return { from, to, label: new Date(from + IST_MS).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" }) };
+    });
+  }
+  const n = range === "7d" ? 7 : 30;
+  return Array.from({ length: n }, (_, i) => {
+    const from = istDayStart(now, i - (n - 1)).getTime();
+    const label = n === 7 || i % 5 === 0 || i === n - 1 ? new Date(from + IST_MS).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }) : "";
+    return { from, to: from + 864e5, label };
+  });
+}
+
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ range?: string; denied?: string }> }) {
   const staff = await requirePermission("dashboard.view");
   const sp = await searchParams;
-  const now = new Date();
-  const days = RANGES[(sp.range as keyof typeof RANGES) ?? "30d"] ?? 30;
-  const from = sp.from ? new Date(`${sp.from}T00:00:00+05:30`) : istDayStart(now, -(days - 1));
-  const to = sp.to ? new Date(new Date(`${sp.to}T00:00:00+05:30`).getTime() + 864e5) : now;
+  const range: RangeKey = RANGES.some((r) => r.key === sp.range) ? (sp.range as RangeKey) : "30d";
   const financial = hasPermission(staff.permissions, "reports.financial");
+  const now = new Date();
+  const firstOrder = await db.order.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } });
+  const from = range === "today" ? istDayStart(now) : range === "7d" ? istDayStart(now, -6) : range === "30d" ? istDayStart(now, -29) : (firstOrder?.createdAt ?? istDayStart(now));
+  const inRange = { gte: from, lte: now };
 
-  const [m, months, settings, zones, needsReview] = await Promise.all([
-    dashboardMetrics({ from, to }),
-    financial ? monthlyRevenue(12) : Promise.resolve([]),
-    getSettings(),
-    db.shippingZone.count({ where: { isActive: true } }),
-    db.product.count({ where: { needsReview: true } }),
+  const [orders, signups, tx] = await Promise.all([
+    db.order.findMany({ where: { createdAt: inRange, status: LIVE }, select: { createdAt: true, total: true } }),
+    db.user.count({ where: { role: "CUSTOMER", createdAt: inRange } }),
+    financial ? db.paymentTransaction.findMany({ where: { createdAt: inRange }, select: { createdAt: true, kind: true, amountPaise: true } }) : Promise.resolve([]),
   ]);
 
-  const setup = [
-    { ok: bankTransferReady(settings) || settings.commerce.codEnabled, label: "A payment method is enabled", hint: "Settings → Payments: add bank details and enable bank transfer and/or COD", href: "/admin/settings" },
-    { ok: Boolean(settings.bank.accountNumber), label: "Bank account details", hint: "Needed for bank-transfer orders", href: "/admin/settings" },
-    { ok: emailConfigured(), label: "Email (SMTP)", hint: "Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, MAIL_FROM – until then emails are logged, not sent" },
-    { ok: storageMode() === "s3", label: `Image storage: ${storageMode() === "s3" ? "Coolify MinIO (S3)" : storageMode() === "blob" ? "Vercel Blob (fallback)" : storageMode()}`, hint: "Set the S3_* variables to move uploads to Coolify MinIO (see docs/ENVIRONMENT_SETUP.md)" },
-    { ok: zones > 0 || settings.commerce.shippingConfigured, label: "Shipping rates", hint: "Shipping → add zones / rates", href: "/admin/shipping" },
-    { ok: Boolean(settings.business.gstin) || false, label: "GSTIN for invoices", hint: "Settings → Business (leave empty if not GST-registered)", href: "/admin/settings" },
-    { ok: Boolean(settings.policies.returns && settings.policies.shipping && settings.policies.terms && settings.policies.privacy), label: "Store policies", hint: "Content → policies (privacy, terms, shipping, returns)", href: "/admin/content" },
-    { ok: needsReview === 0, label: "Imported products reviewed", hint: `${needsReview} product(s) flagged`, href: "/admin/products?review=1" },
-    { ok: m.outOfStock.length === 0, label: "Stock entered", hint: `${m.outOfStock.length} variant(s) at zero stock`, href: "/admin/inventory" },
-  ];
+  const orderValue = orders.reduce((n, o) => n + toPaise(o.total), 0);
+  const aov = orders.length ? Math.round(orderValue / orders.length) : 0;
+  const slots = buckets(range, now, firstOrder?.createdAt ?? null);
+  const salesSeries = slots.map((b) => ({ label: b.label, value: orders.filter((o) => o.createdAt.getTime() >= b.from && o.createdAt.getTime() < b.to).length }));
+  const revenueSeries = slots.map((b) => ({
+    label: b.label,
+    value: tx.filter((t) => t.createdAt.getTime() >= b.from && t.createdAt.getTime() < b.to).reduce((n, t) => n + (t.kind === "REFUND" ? -t.amountPaise : t.amountPaise), 0),
+  }));
 
-  const rangeLink = (r: string) => `/admin?range=${r}`;
-  const activeRange = sp.from || sp.to ? null : (sp.range ?? "30d");
-  const istHour = Number(new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", hour12: false }));
-  const greeting = istHour < 12 ? "Good morning" : istHour < 17 ? "Good afternoon" : "Good evening";
+  const cards = [
+    { title: "Total revenue", value: financial ? formatINR(revenueSeries.reduce((n, s) => n + s.value, 0)) : "—", sub: "Verified payments − refunds", icon: TrendingUp, tone: "bg-forest-950 text-ivory-50", subTone: "text-ivory-50/70", href: "/admin/payments?tab=ledger" },
+    { title: "Sales volume", value: String(orders.length), sub: "Orders placed (excl. cancelled)", icon: ShoppingBag, tone: "bg-gradient-to-br from-green-600 to-forest-700 text-ivory-50", subTone: "text-leaf-200", href: "/admin/orders" },
+    { title: "Avg order value", value: formatINR(aov), sub: "Order value per checkout", icon: Layers, tone: "bg-gradient-to-br from-leaf-500 to-green-600 text-ivory-50", subTone: "text-ivory-50/80", href: "/admin/reports?r=monthly" },
+    { title: "New sign-ups", value: String(signups), sub: "Registered accounts in range", icon: Users, tone: "bg-gradient-to-br from-[#c98a1c] to-spice-500 text-ivory-50", subTone: "text-ivory-50/85", href: "/admin/customers?tab=new" },
+  ];
 
   return (
     <>
-      {/* Greeting banner in the storefront's hero style */}
-      <section className="hero-surface grain relative isolate mb-6 overflow-hidden rounded-[var(--radius-panel)] px-6 py-8 text-ivory-50 md:px-10 md:py-10">
-        <Cinnamon uid="dh1" className="pointer-events-none absolute -right-10 -top-6 w-56 rotate-[24deg] opacity-90 drop-shadow-[0_24px_30px_rgba(0,0,0,0.45)] md:w-72" />
-        <StarAnise uid="dh2" className="pointer-events-none absolute bottom-4 right-[30%] hidden w-16 drop-shadow-[0_14px_18px_rgba(0,0,0,0.45)] md:block" />
-        <Cardamom uid="dh3" className="pointer-events-none absolute right-[18%] top-[58%] hidden w-8 rotate-[30deg] drop-shadow-xl md:block" />
-        <div className="relative max-w-xl">
-          <p className="font-[family-name:var(--font-script)] text-2xl text-leaf-200">{greeting},</p>
-          <h1 className="display mt-1 text-[clamp(2.4rem,4.5vw,3.6rem)] leading-none">{staff.name.split(" ")[0]}</h1>
-          <p className="mt-3 text-sm text-ivory-50/75">
-            {m.pendingTransfers > 0 ? `${m.pendingTransfers} bank transfer(s) waiting to be verified · ` : ""}
-            {m.orders.confirmed + m.orders.processing} order(s) to fulfil · live numbers from your store.
-          </p>
-          {financial && (
-            <p className="mt-5 inline-flex items-baseline gap-2 rounded-full bg-ivory-50/10 px-4 py-2 ring-1 ring-ivory-50/15">
-              <span className="text-xs text-ivory-50/70">Received today</span>
-              <span className="display text-2xl text-leaf-200">{formatINR(m.revenue.today.net)}</span>
-            </p>
-          )}
-        </div>
-      </section>
+      {sp.denied && (
+        <p className="mb-5 rounded-2xl bg-[#fbefd6] px-4 py-3 text-sm text-[#8a5a00]">Your role can&apos;t open that page ({PERMISSIONS[sp.denied as Permission] ?? sp.denied}).</p>
+      )}
 
-      <form className="mb-6 flex flex-wrap items-center gap-2 text-[13px]" action="/admin">
-        <span className="mr-1 text-xs uppercase tracking-[0.14em] text-ink-500">Range</span>
-        {Object.keys(RANGES).map((r) => (
-          <Link key={r} href={rangeLink(r)} className={`rounded-full border px-3.5 py-1.5 ${activeRange === r ? "border-forest-800 bg-forest-800 text-ivory-50" : "border-cream-200 bg-white text-ink-700 hover:border-forest-800"}`}>
-            {r.replace("d", " days").replace("365 days", "1 year")}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="display text-[clamp(2.4rem,4vw,3.4rem)] leading-none text-forest-900">Store analytics</h1>
+          <p className="mt-3 text-sm text-ink-500">Sales, customers and revenue – live from your store.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href={`/admin?range=${range}`} className="inline-flex items-center gap-2 rounded-full border border-cream-200 bg-white px-4 py-2.5 text-[13px] font-medium text-forest-900 hover:border-forest-800">
+            <RefreshCw className="size-3.5" /> Refresh data
+          </Link>
+          <nav aria-label="Date range" className="flex rounded-full border border-cream-200 bg-white p-1 text-[13px]">
+            {RANGES.map((r) => (
+              <Link key={r.key} href={`/admin?range=${r.key}`} aria-current={r.key === range ? "page" : undefined} className={cn("rounded-full px-4 py-1.5 font-medium transition", r.key === range ? "bg-forest-900 text-ivory-50" : "text-ink-700 hover:text-forest-900")}>
+                {r.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((c) => (
+          <Link key={c.title} href={c.href} className={cn("group relative isolate overflow-hidden rounded-[22px] p-6 shadow-[0_20px_40px_-24px_rgba(7,23,13,0.55)] transition hover:-translate-y-0.5", c.tone)}>
+            <c.icon aria-hidden="true" className="absolute -right-4 -top-4 -z-10 size-28 opacity-[0.12]" strokeWidth={1.4} />
+            <div className="flex items-center justify-between">
+              <p className="text-[14px] font-semibold">{c.title}</p>
+              <c.icon className="size-[18px] opacity-90" />
+            </div>
+            <p className="display mt-4 text-[2.6rem] leading-none tabular-nums">{c.value}</p>
+            <p className={cn("mt-3 text-[13px] font-medium", c.subTone)}>{c.sub}</p>
           </Link>
         ))}
-        <input type="date" name="from" defaultValue={sp.from} className="field-input w-auto py-1.5 text-[13px]" aria-label="From" />
-        <input type="date" name="to" defaultValue={sp.to} className="field-input w-auto py-1.5 text-[13px]" aria-label="To" />
-        <button className="btn btn-sm btn-outline text-forest-800">Apply</button>
-      </form>
-
-      {sp.denied && (
-        <p className="mb-5 rounded-2xl bg-[#fbefd6] px-4 py-3 text-sm text-[#8a5a00]">
-          Your role can&apos;t open that page ({PERMISSIONS[sp.denied as Permission] ?? sp.denied}).
-        </p>
-      )}
-
-      {financial && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Received today" value={formatINR(m.revenue.today.net)} hint="Verified payments − refunds" />
-          <Stat label="Last 7 days" value={formatINR(m.revenue.week.net)} />
-          <Stat label="Last 30 days" value={formatINR(m.revenue.month.net)} />
-          <Stat label="Selected range" value={formatINR(m.revenue.inRange.net)} hint={`${formatINR(m.revenue.inRange.refunded)} refunded`} href="/admin/reports" />
-        </div>
-      )}
-
-      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        <Stat label="Orders" value={m.orders.total} href="/admin/orders" />
-        <Stat label="Awaiting payment" value={m.orders.pending} href="/admin/orders?tab=payment" />
-        <Stat label="Verify transfers" value={m.pendingTransfers} tone={m.pendingTransfers ? "warn" : undefined} href="/admin/payments" />
-        <Stat label="To fulfil" value={m.orders.confirmed + m.orders.processing} href="/admin/orders?tab=fulfil" />
-        <Stat label="In transit" value={m.orders.shipped} href="/admin/orders?tab=transit" />
-        <Stat label="Delivered" value={m.orders.delivered} />
-        <Stat label="Needs attention" value={m.orders.attention} tone={m.orders.attention ? "warn" : undefined} href="/admin/orders?tab=attention" />
-        <Stat label="Cancelled" value={m.orders.cancelled} />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Sales volume" subtitle="Orders placed over time" legend="Orders" series={salesSeries} format={(v) => String(v)} />
         {financial ? (
-          <Panel title="Monthly net revenue">
-            <RevenueChart rows={months} />
-          </Panel>
+          <ChartCard title="Revenue analytics" subtitle="Verified money received over time" legend="Net received" series={revenueSeries} format={(v) => formatINR(v)} />
         ) : (
-          <Panel title="Best sellers">
-            <BestSellers rows={m.best} />
-          </Panel>
+          <section className="grid place-items-center rounded-[var(--radius-panel)] border border-cream-200 bg-white/85 p-8 text-center text-sm text-ink-500">
+            <IndianRupee className="size-6 text-green-600" />
+            Revenue charts need the “financial reports” permission.
+          </section>
         )}
-        <Tray>
-          <h2 className="mb-4 text-[15px] font-semibold">Store setup</h2>
-          <ul className="space-y-3 text-sm">
-            {setup.map((s) => (
-              <li key={s.label} className="flex gap-3 rounded-2xl bg-white p-3">
-                {s.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-600" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-500" />}
-                <div>
-                  <p className={s.ok ? "text-ink-700" : "font-medium"}>{s.label}</p>
-                  {!s.ok && (s.href ? <Link href={s.href} className="text-xs text-green-600 underline">{s.hint}</Link> : <p className="text-xs text-ink-500">{s.hint}</p>)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Tray>
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <Panel title="Customers">
-          <p className="text-[28px] font-semibold tabular-nums">{m.customers.total}</p>
-          <p className="text-xs text-ink-500">{m.customers.new} new in range · {m.products} live products</p>
-        </Panel>
-        <Panel title="Payment methods (range)">
-          {m.methods.length ? (
-            <ul className="space-y-2 text-sm">
-              {m.methods.map((x) => (
-                <li key={x.method} className="flex justify-between">
-                  <span>{x.method === "COD" ? "Cash on delivery" : x.method === "BANK_TRANSFER" ? "Bank transfer" : "Online (legacy)"}</span>
-                  <span className="tabular-nums text-ink-700">{x.orders} · {financial ? formatINR(x.totalPaise) : ""}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-ink-500">No orders in this range.</p>
-          )}
-        </Panel>
-        <Panel title="Inventory alerts" actions={<Link href="/admin/inventory" className="text-sm text-green-600">Inventory</Link>}>
-          {m.outOfStock.length + m.lowStock.length === 0 ? (
-            <p className="text-sm text-ink-500">All variants are above their low-stock level.</p>
-          ) : (
-            <ul className="max-h-48 space-y-1.5 overflow-y-auto text-sm">
-              {[...m.outOfStock, ...m.lowStock].slice(0, 30).map((v) => (
-                <li key={v.id} className="flex justify-between gap-3">
-                  <span className="truncate">{v.product.name} · {v.label}</span>
-                  <span className={v.stock <= 0 ? "text-danger-600" : "text-warning-500"}>{v.stock <= 0 ? "Out" : `${v.stock} left`}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-      </div>
-
-      {financial && (
-        <div className="mt-6">
-          <Panel title="Best sellers (range)"><BestSellers rows={m.best} /></Panel>
-        </div>
-      )}
-
-      <div className="mt-6">
-        <Panel title="Recent orders" actions={<Link href="/admin/orders" className="text-sm text-green-600">View all</Link>}>
-          {m.recent.length ? (
-            <Table>
-              <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Status</th><th>Payment</th><th className="text-right">Total</th></tr></thead>
-              <tbody>
-                {m.recent.map((o) => (
-                  <tr key={o.id}>
-                    <td><Link href={`/admin/orders/${o.id}`} className="font-medium text-green-600 hover:underline">{o.number}</Link></td>
-                    <td className="text-ink-500">{formatDate(o.createdAt, true)}</td>
-                    <td>{o.customerName}</td>
-                    <td><OrderStatusBadge status={o.status} /></td>
-                    <td><PaymentStatusBadge status={o.paymentStatus} /></td>
-                    <td className="text-right tabular-nums">{formatINR(toPaise(o.total))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          ) : (
-            <p className="text-sm text-ink-500">No orders yet.</p>
-          )}
-        </Panel>
       </div>
     </>
   );
 }
 
-function BestSellers({ rows }: { rows: Array<{ name: string; variant: string; units: number }> }) {
-  if (!rows.length) return <p className="text-sm text-ink-500">No sales in this range.</p>;
-  const max = Math.max(...rows.map((r) => r.units));
+function ChartCard({ title, subtitle, legend, series, format }: { title: string; subtitle: string; legend: string; series: Array<{ label: string; value: number }>; format: (v: number) => string }) {
+  const W = 640;
+  const H = 260;
+  const pad = { top: 12, right: 8, bottom: 28, left: 64 };
+  const max = Math.max(...series.map((s) => s.value), 1);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(max * f));
+  const slot = (W - pad.left - pad.right) / series.length;
+  const barW = Math.max(4, Math.min(28, slot * 0.55));
+  const y = (v: number) => pad.top + (H - pad.top - pad.bottom) * (1 - v / max);
+  const total = series.reduce((n, s) => n + s.value, 0);
+
   return (
-    <ul className="space-y-3 text-sm">
-      {rows.map((r) => (
-        <li key={r.name + r.variant}>
-          <div className="flex justify-between"><span className="truncate">{r.name} · {r.variant}</span><span className="tabular-nums">{r.units}</span></div>
-          <div className="mt-1 h-1.5 rounded-full bg-[#f0f2ee]"><div className="h-full rounded-full bg-leaf-300" style={{ width: `${(r.units / max) * 100}%` }} /></div>
-        </li>
-      ))}
-    </ul>
+    <section className="rounded-[var(--radius-panel)] border border-cream-200 bg-white/90 p-6 backdrop-blur md:p-8">
+      <h2 className="display text-[2rem] leading-none text-forest-900">{title}</h2>
+      <p className="mt-2 text-sm text-ink-500">{subtitle}</p>
+      <p className="mt-5 flex items-center gap-2 text-[13px] text-ink-700">
+        <span className="size-2.5 rounded-full bg-forest-800" /> {legend} <span className="ml-auto text-ink-500">Total {format(total)}</span>
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-auto w-full" role="img" aria-label={`${title}: total ${format(total)}`}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={pad.left} x2={W - pad.right} y1={y(t)} y2={y(t)} stroke="#efebdf" />
+            <text x={pad.left - 10} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#69716a">{format(t)}</text>
+          </g>
+        ))}
+        {series.map((s, i) => {
+          const x = pad.left + i * slot + (slot - barW) / 2;
+          const top = s.value > 0 ? Math.min(y(s.value), H - pad.bottom - 3) : H - pad.bottom;
+          return (
+            <g key={i}>
+              <title>{`${s.label || ""} ${format(s.value)}`.trim()}</title>
+              {s.value !== 0 && <rect x={x} y={top} width={barW} height={H - pad.bottom - top} rx={Math.min(barW / 2, 8)} fill={i === series.length - 1 ? "#2e7d3a" : "#123d22"} />}
+              {s.label && <text x={x + barW / 2} y={H - 8} textAnchor="middle" fontSize="11" fill="#69716a">{s.label}</text>}
+            </g>
+          );
+        })}
+      </svg>
+    </section>
   );
 }
