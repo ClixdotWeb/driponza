@@ -9,6 +9,18 @@ import { hasPermission, type Permission } from "@/lib/permissions";
 export const SESSION_COOKIE = "dz_session";
 const SESSION_DAYS = 30;
 
+/**
+ * A `Secure` cookie is only stored and sent back over HTTPS, so marking one Secure
+ * on a site served over plain HTTP silently breaks sign-in: the browser drops it and
+ * every following request looks signed out. Follow the site's own scheme instead of
+ * NODE_ENV, falling back to NODE_ENV when APP_URL isn't set.
+ */
+export function secureCookies() {
+  const url = process.env.APP_URL;
+  if (url) return url.startsWith("https://");
+  return process.env.NODE_ENV === "production";
+}
+
 export type SessionUser = { id: string; email: string; name: string; phone: string | null; role: "CUSTOMER" | "ADMIN" };
 
 export async function createSession(userId: string) {
@@ -26,7 +38,7 @@ export async function createSession(userId: string) {
   });
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     sameSite: "lax",
     path: "/",
     expires: expiresAt,

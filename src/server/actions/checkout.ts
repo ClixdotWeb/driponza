@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, secureCookies } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/rate-limit";
 import { getCart, ensureCartId } from "@/server/cart";
 import { createOrder, customerCancel, hashGuestToken, OrderError, quoteCart, submitBankTransfer, type Quote } from "@/server/orders";
@@ -116,7 +116,7 @@ export async function placeOrderAction(input: unknown): Promise<PlaceOrderResult
     }
     if (guestToken) {
       // Lets the same browser reopen the order without the emailed link.
-      (await cookies()).set(`dz_go_${order.number}`, guestToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
+      (await cookies()).set(`dz_go_${order.number}`, guestToken, { httpOnly: true, secure: secureCookies(), sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
       return { ok: true, url: `/order/${order.number}?placed=1` };
     }
     return { ok: true, url: `/account/orders/${order.number}?placed=1` };

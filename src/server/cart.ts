@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/money";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, secureCookies } from "@/lib/auth/session";
 import { randomToken } from "@/lib/auth/tokens";
 import { displayName } from "@/server/catalog";
 
@@ -140,7 +140,7 @@ export async function ensureCartId(): Promise<string> {
   const cart = await db.cart.create({ data: { guestToken: newToken } });
   jar.set(CART_COOKIE, newToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 60,
