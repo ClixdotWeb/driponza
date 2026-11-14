@@ -46,6 +46,35 @@ object storage (step 3).
 Coolify → **+ New** → **Database** → **PostgreSQL 16**. Note the *internal* connection
 string for `DATABASE_URL`; migrations can use the same value.
 
+#### 1a. Carry the existing data across (recommended)
+
+A fresh database starts empty, so the seed gives you the 8 products and 2 categories
+but **not** stock levels, settings, policies, shipping zones, coupons, staff accounts or
+orders. Copying the Neon database over keeps all of it and is a single pair of commands.
+
+Do this **before the application's first deploy** — the restore needs an empty database,
+and the app runs `prisma migrate deploy` on start. Run it on the Coolify host, which
+avoids installing PostgreSQL tools locally and keeps the client version matched:
+
+```bash
+# 1. Dump Neon (schema + data, including _prisma_migrations)
+docker run --rm postgres:16 pg_dump \
+  --no-owner --no-privileges --format=custom \
+  "<NEON_DATABASE_URL>" > driponza.dump
+
+# 2. Restore into the Coolify database
+docker run --rm -i postgres:16 pg_restore \
+  --no-owner --no-privileges -d "<COOLIFY_DATABASE_URL>" < driponza.dump
+```
+
+Because `_prisma_migrations` comes across with the dump, the first start finds the
+schema already current and applies nothing. Verify with `npm run admin:list` — the
+staff accounts should be the ones from Vercel.
+
+Starting clean instead: skip this, and after the first deploy run `npm run db:seed`
+(set `SEED_STOCK` to give every variant an opening stock figure), then re-enter
+Settings, Shipping zones and policy content in the admin.
+
 ### 2. Generate the secrets
 
 ```bash
