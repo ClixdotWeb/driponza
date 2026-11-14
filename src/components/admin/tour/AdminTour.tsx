@@ -225,7 +225,11 @@ function TourCard({
     const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
     const vh = typeof window === "undefined" ? 800 : window.innerHeight;
     const width = Math.min(CARD_W, vw - GAP * 2);
-    if (!box) return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width };
+    // Centred in pixels, not with translate(-50%,-50%): the entrance animation also
+    // drives `transform`, and a CSS animation outranks an inline style, so the card
+    // would be drawn from its corner and then jump to the middle when it finished.
+    const centred = { top: Math.max(GAP, (vh - height) / 2), left: Math.max(GAP, (vw - width) / 2), width };
+    if (!box) return centred;
 
     const clamp = (v: number, max: number) => Math.min(Math.max(GAP, v), Math.max(GAP, max));
     const centredLeft = clamp(box.left + box.width / 2 - width / 2, vw - width - GAP);
@@ -237,7 +241,7 @@ function TourCard({
     if (box.top - GAP >= height) return { top: box.top - height - GAP, left: centredLeft, width };
     if (vw - (box.left + box.width) - GAP >= width) return { top: centredTop, left: box.left + box.width + GAP, width };
     if (box.left - GAP >= width) return { top: centredTop, left: box.left - width - GAP, width };
-    return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width };
+    return centred;
   }, [box, height]);
 
   return (
