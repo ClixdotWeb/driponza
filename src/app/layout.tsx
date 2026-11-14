@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Marks JS as available before paint (see data-animate in globals.css). Failsafe reveals content if hydration stalls. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: "document.documentElement.classList.add('js');setTimeout(function(){document.documentElement.classList.remove('js')},4000)",
+            __html: "document.documentElement.classList.add('js');setTimeout(function(){document.documentElement.classList.remove('js')},1800)",
           }}
         />
       </head>

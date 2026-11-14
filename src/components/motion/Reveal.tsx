@@ -25,11 +25,23 @@ export function Reveal({
     () => {
       const items = Array.from(ref.current!.children) as HTMLElement[];
       if (prefersReducedMotion()) return gsap.set(items, { autoAlpha: 1 });
-      gsap.set(items, { autoAlpha: 0, y });
-      ScrollTrigger.batch(items, {
-        start: "top 88%",
+
+      // Anything already on screen when this runs is shown at once. The CSS hides
+      // these children until hydration, so on a slow connection the reader can be
+      // looking at a blank section; animating it in then reads as a delay, and
+      // scrolling past before hydration would have left it blank until the failsafe.
+      const fold = window.innerHeight * 0.92;
+      const visible = items.filter((el) => el.getBoundingClientRect().top < fold);
+      const pending = items.filter((el) => !visible.includes(el));
+
+      if (visible.length) gsap.set(visible, { autoAlpha: 1, y: 0 });
+      if (!pending.length) return;
+
+      gsap.set(pending, { autoAlpha: 0, y });
+      ScrollTrigger.batch(pending, {
+        start: "top 92%",
         once: true,
-        onEnter: (batch) => gsap.to(batch, { autoAlpha: 1, y: 0, duration: 1, ease: "expo.out", stagger, overwrite: true }),
+        onEnter: (batch) => gsap.to(batch, { autoAlpha: 1, y: 0, duration: 0.7, ease: "expo.out", stagger, overwrite: true }),
       });
     },
     { scope: ref },
