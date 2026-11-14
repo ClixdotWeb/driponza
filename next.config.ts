@@ -18,6 +18,12 @@ const s3 = (() => {
  */
 const imageHosts = ["https://res.cloudinary.com", "https://*.public.blob.vercel-storage.com", ...(s3 ? [s3.origin] : [])].join(" ");
 
+// Only when the site itself is served over HTTPS. On a plain-HTTP deployment
+// (a Coolify instance before its certificate is issued) this directive upgrades
+// every stylesheet and script request to https://, which then fails — the page
+// renders as unstyled HTML.
+const httpsOrigin = (process.env.APP_URL ?? "").startsWith("https://");
+
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
@@ -33,7 +39,7 @@ const csp = [
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
-  "upgrade-insecure-requests",
+  ...(httpsOrigin ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
